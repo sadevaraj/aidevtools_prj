@@ -1,131 +1,90 @@
 # Simple Sudoku
 
-### Problem Description
+Simple Sudoku is a full-stack desktop Sudoku application. Players create an
+account, choose one of three verified easy puzzles, save progress manually, and
+resume their own game later. FastAPI persists accounts and games in PostgreSQL;
+React serves the browser experience through a same-origin API proxy.
 
-Players want a straightforward way to play Sudoku, save an unfinished puzzle,
-and resume later, including from another browser, using a simple account.
+## Product rules
 
-Simple Sudoku is a full-stack web application with username/password registration,
-three predefined easy puzzles, manual progress saving, and server-side solution
-checking. Each player has one game per puzzle; completed games stay read-only.
-The backend stores accounts and game progress in a persistent database.
+The authoritative [product specification](docs/specs/product.md) defines
+SUD-01 through SUD-14. The implementation preserves these core rules:
 
-The first version targets desktop browsers and demonstrates the AI Dev Tools
-Zoomcamp development workflow. The specification describes intended behaviour,
-not a claim that the application has already been implemented.
+- Usernames are 1–14 ASCII letters, digits, or underscores and unique without
+  regard to case. Passwords are 8–14 case-sensitive characters and are never
+  trimmed, lowercased, or silently shortened. Passwords cannot be recovered.
+- Each player has at most one persisted game per puzzle. Only the signed-in
+  owner can list, read, save, or submit their games.
+- The three predefined puzzles are migrated and seeded automatically. Original
+  clues are immutable; API boards must be 9×9 and contain only digits 1–9 or
+  blank cells.
+- Entries are saved only when the player selects **Save progress**. Submission
+  validation runs on the backend: incomplete, incorrect, and correct boards
+  produce distinct outcomes. A correct completion is persisted and permanently
+  read-only; completed games cannot be edited, reset, replayed, or restarted.
+- No correctness feedback is given while entering digits. Log out on shared
+  devices; closing a browser does not revoke a server session.
 
-### Product Specification
+## Run locally with Docker Compose
 
-The authoritative [product specification](docs/specs/product.md) contains the
-agreed rules, player journey, SUD-01 through SUD-14 acceptance criteria, persisted
-data, and scope exclusions. Update it when requirements change with user approval,
-then align the related GitHub issues and tests. Do not maintain competing copies
-of the detailed requirements in the README.
-
-The shared [agent guard](.github/agents/guards/specification-changes.md) requires
-recorded human approval and independent QA/review of requirement changes.
-It is an instruction, not an executable lock. CODEOWNERS is informational;
-the [solo-project review policy](docs/spec-governance.md) requires independent
-agent QA/review but not another GitHub user's approval.
-
-### Agent Team Specification
-
-Simple Sudoku uses four project-specific development agents, with
-[GitHub Issues](https://github.com/sadevaraj/aidevtools_prj/issues) as their shared
-task tracker.
-
-| Agent | Responsibilities | Required output |
-|---|---|---|
-| [Prj_Coordinator](.github/agents/prj-coordinator.agent.md) | Clarify requirements, create authorized issues with acceptance criteria and dependencies, delegate work, route failures, and close verified issues. Does not implement application code. | Issue links, current stage, acceptance summary, and blockers |
-| [Prj_Dev](.github/agents/prj-dev.agent.md) | Implement one approved issue, add developer tests, update related documentation, and fix reported defects. Does not approve or close its own work. | Implementation summary, validation results, and a DEV issue comment |
-| [Prj_QA](.github/agents/prj-qa.agent.md) | Independently verify every acceptance criterion, run relevant checks, and add focused regression tests. Does not modify production code. | PASS, FAIL, or BLOCKED with per-criterion evidence in a TEST issue comment |
-| [Prj_Reviewer](.github/agents/prj-reviewer.agent.md) | Independently review the tested changes for correctness, maintainability, data integrity, authorization, and scope compliance. Does not edit code. | APPROVE, CHANGES REQUESTED, or BLOCKED in a REVIEW issue comment |
-
-#### Collaboration Process
-
-1. The coordinator creates or refines an authorized GitHub issue with a bounded
-   goal, testable acceptance criteria, and explicit dependencies.
-2. Once dependencies are satisfied and implementation is authorized, the
-   coordinator delegates the issue to Prj_Dev.
-3. Prj_Dev implements the task, runs developer checks, and posts its evidence.
-4. Prj_QA independently verifies the current changes against the issue criteria.
-5. After QA passes, Prj_Reviewer reviews the same revision and change scope.
-6. Failures or blocking findings return through the coordinator to Prj_Dev.
-   Fixes require affected tests to be rerun and renewed review.
-7. The coordinator closes the issue only after all acceptance criteria are met,
-   QA passes, and the reviewer approves, with evidence recorded in the issue.
-
-Only one writer works at a time. Workers do not delegate to one another.
-Unresolved product decisions and required permissions go back to the user.
-Local test results are not presented as proof of remote CI or deployment success.
-
-The [agent team guide](.github/agents/README.md) explains how to invoke the agents;
-the [delivery process](docs/process.md) defines tracker operations and evidence
-formats. [AGENTS.md](AGENTS.md) links the shared project context.
-
-These definitions describe the intended workflow, not proof it has already run.
-Actual issue comments, test results, and review records provide execution
-evidence. These are development agents, not the application's runtime on-call
-responder.
-
-### Course Delivery Requirements
-
-The [architecture](docs/architecture.md) specifies separate frontend/backend
-Docker images deployed on Render, a one-command local Docker Compose system
-including PostgreSQL, and a single entry point for unit and integration tests.
-These are agreed delivery requirements, not implemented capabilities yet.
-
-### Developer foundation
-
-The initial project foundation uses React, TypeScript, and Vite in `frontend/`,
-FastAPI in `backend/`, and reserved migration/seed locations in `database/`.
-This is scaffolding only: authentication, API routes, Sudoku gameplay, migrations,
-and puzzle seeding are not implemented. Application routing and the project test
-runner are deferred; the configuration checks use Python's standard-library
-`unittest` only.
-
-Requirements: Docker with the Compose plugin and `openssl`. Node/npm run inside
-the frontend build container; they do not need to be installed on the host.
+Requirements: Docker with the Compose plugin and `openssl`. Node/npm are used
+inside Docker only; they do not need to be installed on the host.
 
 1. Copy `.env.example` to `.env`.
-2. Set `POSTGRES_PASSWORD` in `.env` to a newly generated local-only value
-   (for example, generate one with `openssl rand -hex 24`). Do not use a shared
-   or deployed credential. `.env` is ignored by Git.
-3. From the repository root, run `docker compose up --build`. The frontend is
-   available at `http://localhost:5173`; the backend container starts on port
-   8000 and PostgreSQL is available only to the Compose network.
-4. Stop the services with `docker compose down`. The named PostgreSQL volume is
-   retained; do not remove it unless its local data is intentionally disposable.
+2. Set `POSTGRES_PASSWORD` to a new local-only value and `SESSION_SECRET` to a
+   different random value of at least 32 characters (for example, generate
+   values with `openssl rand -hex 24` and `openssl rand -hex 32`). Keep them in
+   the ignored `.env`; never use deployment or shared credentials.
+3. Start the full stack from the repository root:
 
-Useful foundation checks from the repository root:
+   ```sh
+   docker compose up --build
+   ```
+
+4. Open `http://localhost:5173`. If that host port is occupied, set
+   `FRONTEND_PORT=15173` in `.env` and open `http://localhost:15173`.
+   PostgreSQL and the API are not published to host ports; the frontend
+   container proxies `/api/` to the backend on the Compose network.
+5. Stop with `docker compose down`. The named PostgreSQL volume is retained
+   across ordinary container recreation. **Do not use `docker compose down -v`
+   unless you intentionally want to irreversibly delete the local database.**
+
+Compose waits for PostgreSQL health, then the backend applies Alembic migrations
+and validates/idempotently seeds exactly three puzzles before Uvicorn starts.
+The API health check verifies a database query. Migration or seed failure stops
+backend startup rather than reporting ready.
+
+## Developer verification
+
+Run the single root unit + real-PostgreSQL integration command:
 
 ```sh
-docker compose build frontend
-docker compose run --rm backend python -m unittest discover -s tests -v
-docker compose run --rm backend python -c "from app.main import app; print(app.title)"
+sh scripts/test.sh
 ```
 
-The backend requires explicit `APP_ENV=development` and valid PostgreSQL
-connection settings (`DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`,
-`DATABASE_USER`, and `DATABASE_PASSWORD`). Compose supplies these settings from
-the local `.env` password; no connection URL is stored in the project. Invalid
-or missing settings fail startup with a sanitized configuration diagnostic. The
-backend currently exposes no product API; a successful import only confirms the
-configured scaffold starts, not that the database is reachable or that gameplay
-is ready.
+It builds the backend test image, starts PostgreSQL in an isolated temporary
+Compose project using a tmpfs database, applies migrations/seeds, runs backend
+tests, then runs frontend component tests and the production TypeScript/Vite
+build using Dockerized Node. It exits nonzero on any failed suite and removes
+only its own test containers/network. It never mounts or deletes the developer
+application database volume.
 
-The product specification defines the game, not the entire course submission.
-The project also needs a public task tracker with acceptance criteria and evidence
-of agent use, a documented agent team/process, modular project context, automated
-tests, one-command local/container startup, deployment, and CI/CD.
+The React app is tested with Vitest/Testing Library; backend behavior and
+persistence are tested with Pytest against actual PostgreSQL. `npm audit` for
+the locked frontend dependency tree currently reports no known vulnerabilities.
+The developer checks do not represent remote CI or deployment verification.
 
-Correlated logs, metrics, and traces are agreed scope in the
-[architecture](docs/architecture.md#observability), using OpenTelemetry and a local
-Grafana/Prometheus/Loki/Tempo stack. The secure destination for Render telemetry
-remains to be decided. User-impact alerts and a bounded runtime on-call responder
-are also approved in the [recovery plan](docs/architecture.md#user-impact-alerts-and-automatic-recovery);
-the exact scenario, tools, thresholds, and hosting still need agreement.
-Image rollback is already planned. None is satisfied merely by implementing the
-game, and no operational implementation is claimed yet.
+## Implementation and delivery boundaries
 
-Course brief: https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project
+The engineering choices and verification implications are recorded in
+[ADR-0001](docs/adr/0001-core-implementation-decisions.md). The
+[architecture](docs/architecture.md) covers the complete delivery plan.
+Deployment, CI/CD, telemetry, alerts, and runtime recovery are separate scope
+and are not claimed as implemented by this core milestone.
+
+The [delivery process](docs/process.md), [agent team](.github/agents/README.md),
+and [shared specification guard](.github/agents/guards/specification-changes.md)
+describe how issues, DEV evidence, independent QA, and review are handled.
+
+Course brief:
+https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project

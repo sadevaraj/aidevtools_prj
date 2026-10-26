@@ -15,7 +15,8 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       APP_ENV: development
       DATABASE_HOST: database
@@ -23,17 +24,26 @@ services:
       DATABASE_NAME: sudoku
       DATABASE_USER: sudoku
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a local-only value}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env to a local-only random value}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-5/minute}
     depends_on:
       database:
         condition: service_healthy
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
 
   frontend:
     build:
       context: ./frontend
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    environment:
+      API_UPSTREAM: http://backend:8000
     ports:
       - "${FRONTEND_PORT:-5173}:80"
 

@@ -1,0 +1,37 @@
+services:
+  test_database:
+    image: postgres:17.4-alpine
+    environment:
+      POSTGRES_DB: sudoku_test
+      POSTGRES_USER: sudoku_test
+      POSTGRES_PASSWORD: integration-test-only-password
+    tmpfs:
+      - /var/lib/postgresql/data:rw,size=256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sudoku_test -d sudoku_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  api_tests:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_ENV: development
+      DATABASE_HOST: test_database
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: sudoku_test
+      DATABASE_USER: sudoku_test
+      DATABASE_PASSWORD: integration-test-only-password
+      SESSION_SECRET: test-only-session-secret-not-for-deployment-123456
+      LOGIN_RATE_LIMIT: 5/minute
+    depends_on:
+      test_database:
+        condition: service_healthy
+    command: ["sh", "-c", "python -m app.migrate && pytest -q"]
+
+  frontend_tests:
+    build:
+      context: ./frontend
+      target: tests

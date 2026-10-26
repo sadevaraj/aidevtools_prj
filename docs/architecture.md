@@ -34,6 +34,14 @@ puzzle seeding before the API becomes ready. PostgreSQL uses a named volume so
 ordinary container recreation preserves saved games. Document first-run setup
 and any required configuration without committing secrets.
 
+The frontend Nginx container serves the built React assets and proxies
+same-origin `/api/` requests to `API_UPSTREAM`. In Compose this is
+`http://backend:8000`; a future Render frontend service must receive the backend
+service address as a runtime value. The browser does not call a separate API
+origin, so the flow does not depend on cross-site cookies or permissive CORS.
+The API is reachable only from the Compose network locally; PostgreSQL is not
+published on a host port.
+
 ## Render Deployment
 
 Build versioned frontend and backend images and publish them to a container
@@ -75,9 +83,13 @@ deployment is deferred; do not claim it is implemented.
 
 ## Test Entry Point
 
-Provide one documented repository-root command that runs both unit and integration
-tests and exits unsuccessfully if any required suite fails. The exact command will
-be established with the project tooling.
+The repository-root command is `sh scripts/test.sh`. It runs backend rules,
+configuration, security/API, migrations and persistence tests against a fresh
+real PostgreSQL container, plus frontend interaction tests, TypeScript checks,
+and a production Vite build. The test database is tmpfs-backed in a unique test
+Compose project and is never the named developer application volume. Any setup,
+migration, seed, test, frontend, or build failure propagates as a nonzero command
+result. See `compose.test.yaml` and `docs/adr/0001-core-implementation-decisions.md`.
 
 - Backend unit tests: Sudoku rules, validation, and relevant authentication logic.
 - Frontend unit/component tests: board interactions and user-visible states.
@@ -86,8 +98,8 @@ be established with the project tooling.
 - Integration infrastructure must be started and cleaned up by the test tooling,
   without deleting the developer's application database volume.
 
-These are implementation requirements, not claims that tests or containers exist
-or pass yet.
+Local test and Compose results are development evidence only; they do not
+demonstrate remote CI, Render configuration, or deployment success.
 
 ## Observability
 
