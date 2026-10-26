@@ -75,6 +75,45 @@ Docker images deployed on Render, a one-command local Docker Compose system
 including PostgreSQL, and a single entry point for unit and integration tests.
 These are agreed delivery requirements, not implemented capabilities yet.
 
+### Developer foundation
+
+The initial project foundation uses React, TypeScript, and Vite in `frontend/`,
+FastAPI in `backend/`, and reserved migration/seed locations in `database/`.
+This is scaffolding only: authentication, API routes, Sudoku gameplay, migrations,
+and puzzle seeding are not implemented. Application routing and the project test
+runner are deferred; the configuration checks use Python's standard-library
+`unittest` only.
+
+Requirements: Docker with the Compose plugin and `openssl`. Node/npm run inside
+the frontend build container; they do not need to be installed on the host.
+
+1. Copy `.env.example` to `.env`.
+2. Set `POSTGRES_PASSWORD` in `.env` to a newly generated local-only value
+   (for example, generate one with `openssl rand -hex 24`). Do not use a shared
+   or deployed credential. `.env` is ignored by Git.
+3. From the repository root, run `docker compose up --build`. The frontend is
+   available at `http://localhost:5173`; the backend container starts on port
+   8000 and PostgreSQL is available only to the Compose network.
+4. Stop the services with `docker compose down`. The named PostgreSQL volume is
+   retained; do not remove it unless its local data is intentionally disposable.
+
+Useful foundation checks from the repository root:
+
+```sh
+docker compose build frontend
+docker compose run --rm backend python -m unittest discover -s tests -v
+docker compose run --rm backend python -c "from app.main import app; print(app.title)"
+```
+
+The backend requires explicit `APP_ENV=development` and valid PostgreSQL
+connection settings (`DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`,
+`DATABASE_USER`, and `DATABASE_PASSWORD`). Compose supplies these settings from
+the local `.env` password; no connection URL is stored in the project. Invalid
+or missing settings fail startup with a sanitized configuration diagnostic. The
+backend currently exposes no product API; a successful import only confirms the
+configured scaffold starts, not that the database is reachable or that gameplay
+is ready.
+
 The product specification defines the game, not the entire course submission.
 The project also needs a public task tracker with acceptance criteria and evidence
 of agent use, a documented agent team/process, modular project context, automated
