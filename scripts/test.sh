@@ -56,3 +56,4 @@ trap cleanup EXIT INT TERM
 
 $compose up --build --abort-on-container-exit --exit-code-from api_tests api_tests
 $compose run --build --rm --no-deps frontend_tests
+sh scripts/test-frontend-proxy.sh

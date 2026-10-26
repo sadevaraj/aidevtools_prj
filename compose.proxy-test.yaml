@@ -1,0 +1,59 @@
+# Isolated fixtures: no public network requests, database, accounts, or app volume.
+x-proxy: &proxy
+  image: ${COMPOSE_PROJECT_NAME}-frontend
+  build:
+    context: ./frontend
+  volumes:
+    - ${PROXY_TEST_CERTIFICATES:?Run sh scripts/test-frontend-proxy.sh}/trusted.crt:/etc/ssl/certs/ca-certificates.crt:ro
+  depends_on:
+    - proxy-fixture
+
+services:
+  proxy-fixture:
+    image: python:3.12.9-slim-bookworm
+    volumes:
+      - ./frontend/tests/proxy_integration.py:/tests/proxy_integration.py:ro
+      - ${PROXY_TEST_CERTIFICATES:?Run sh scripts/test-frontend-proxy.sh}:/certificates:ro
+    command: ["python", "/tests/proxy_integration.py", "serve"]
+    networks:
+      default:
+        aliases: [wrong-name]
+
+  proxy_https:
+    <<: *proxy
+    environment:
+      API_UPSTREAM: https://proxy-fixture:8443
+      PORT: "10000"
+
+  proxy_http:
+    <<: *proxy
+    environment:
+      API_UPSTREAM: http://proxy-fixture:8000
+      PORT: "10000"
+
+  proxy_untrusted:
+    <<: *proxy
+    environment:
+      API_UPSTREAM: https://proxy-fixture:9443
+      PORT: "10000"
+
+  proxy_mismatch:
+    <<: *proxy
+    environment:
+      API_UPSTREAM: https://wrong-name:8443
+      PORT: "10000"
+
+  proxy_tests:
+    image: python:3.12.9-slim-bookworm
+    volumes:
+      - ./frontend/tests/proxy_integration.py:/tests/proxy_integration.py:ro
+    command: ["python", "/tests/proxy_integration.py"]
+    depends_on:
+      - proxy_https
+      - proxy_http
+      - proxy_untrusted
+      - proxy_mismatch
+
+networks:
+  default:
+    internal: true

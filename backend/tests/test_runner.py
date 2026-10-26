@@ -27,6 +27,13 @@ def runner_project(tmp_path):
     copied_script = tmp_path / "scripts/test.sh"
     copied_script.parent.mkdir()
     copied_script.write_text(script.read_text())
+    # Isolate the new child runner just as Docker is isolated above. Its real
+    # containers are covered by the root runner, not nested inside these tests.
+    (copied_script.parent / "test-frontend-proxy.sh").write_text(
+        '#!/bin/sh\n'
+        'touch proxy-check-ran\n'
+        '[ "$FAIL_STAGE" != proxy ] || exit 25\n'
+    )
     datasource = tmp_path / "observability/grafana/provisioning/datasources/datasources.yaml"
     datasource.parent.mkdir(parents=True)
     # Orchestration fixtures need valid input, not a production validation bypass.
@@ -49,7 +56,9 @@ def runner_project(tmp_path):
     return run, datasource, log
 
 
-@pytest.mark.parametrize(("fail_stage", "expected"), [("", 0), ("up", 23), ("run", 24)])
+@pytest.mark.parametrize(
+    ("fail_stage", "expected"), [("", 0), ("up", 23), ("run", 24), ("proxy", 25)],
+)
 def test_root_runner_propagates_failures_and_always_cleans_own_project(runner_project, fail_stage, expected):
     run, _, log = runner_project
     result = run(fail_stage)
@@ -59,6 +68,7 @@ def test_root_runner_propagates_failures_and_always_cleans_own_project(runner_pr
     assert all("sudoku-isolated-tests-" in call for call in calls)
     assert all("compose.test.yaml" in call and "-v" not in call for call in calls)
     assert not any(" run " in call for call in calls) if fail_stage == "up" else True
+    assert (log.parent / "proxy-check-ran").exists() == (fail_stage in ("", "proxy"))
 
 
 @pytest.mark.parametrize("missing", ["directory", "file"])

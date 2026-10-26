@@ -74,7 +74,10 @@ before listening, and uses the required `DATABASE_URL`. `COOKIE_SECURE=false`
 is set only in this local HTTP Compose service; the app defaults to Secure
 cookies in production and the Render runbook requires them enabled over HTTPS.
 The frontend proxies same-origin `/api/` requests, preserving CSRF headers and
-cookies. PostgreSQL is not published to the host; the `sudoku-prod-data` volume
+cookies. HTTPS upstreams use the backend Host/SNI and verified system-CA TLS;
+local HTTP upstreams remain supported. See the runbook's
+[proxy health diagnosis](docs/runbooks/render-development.md#https-upstream-routing-and-health-diagnosis).
+PostgreSQL is not published to the host; the `sudoku-prod-data` volume
 persists local test accounts and games. Stop with
 `docker compose -p sudoku-issue16-smoke -f compose.prod.yaml down --volumes
 --remove-orphans` when the smoke test is finished; this removes only the
@@ -203,7 +206,14 @@ invalid configuration fails before Docker starts. It then builds the backend tes
 image, starts PostgreSQL in an isolated temporary
 Compose project using a tmpfs database, applies migrations/seeds, runs backend
 tests, then runs frontend component tests and the production TypeScript/Vite
-build using Dockerized Node. It exits nonzero on any failed suite and removes
+build using Dockerized Node. It also runs production nginx HTTP/HTTPS proxy
+regressions against isolated local fixtures, including Host/SNI routing,
+certificate trust/name rejection, cookie/CSRF/trace forwarding, and failure
+responses. Those tests use Docker and the same host `openssl` prerequisite as
+local setup; they generate and remove disposable local TLS material, without
+contacting Render. Run only that focused suite with
+`sh scripts/test-frontend-proxy.sh`.
+The root command exits nonzero on any failed suite and removes
 only its own test containers/network. It never mounts or deletes the developer
 application database volume.
 

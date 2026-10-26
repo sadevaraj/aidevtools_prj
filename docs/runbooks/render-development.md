@@ -148,6 +148,46 @@ cookies for this HTTPS deployment; do not disable `COOKIE_SECURE`. See
 [Render port binding](https://render.com/docs/web-services#port-binding) for
 the `PORT` setting.
 
+### HTTPS upstream routing and health diagnosis
+
+Set `API_UPSTREAM` to the backend origin only, for example
+`https://simple-sudoku-backend.onrender.com` for the owner's Free backend.
+Do not append `/api`, a path, or a trailing slash: nginx must preserve the
+browser's `/api/...` path. Local Compose continues to use
+`http://backend:8000`.
+
+The frontend uses the upstream authority (`$proxy_host`) for the HTTP `Host`
+header and the upstream hostname for TLS SNI and certificate-name verification.
+Both are necessary when the upstream is behind Render's shared HTTPS router.
+Using the browser/frontend hostname as upstream `Host` routes to the wrong
+service; omitting SNI can fail the TLS handshake with nginx returning 502.
+HTTPS upstream certificates are verified against the nginx image's system CA
+bundle at `/etc/ssl/certs/ca-certificates.crt`, with verification depth 3.
+Do not disable verification to work around certificate failures. HTTP Compose
+upstreams do not perform TLS verification. These settings follow nginx's
+[proxy module directives](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_server_name).
+
+This only changes upstream transport/routing identity. Browser requests remain
+same-origin; cookies (including Secure/HttpOnly/SameSite attributes), CSRF
+headers, Origin, and trace context pass through unchanged. Other existing
+forwarded-header settings are unchanged.
+
+The frontend `/` health check proves static serving, not API connectivity.
+After an owner-operated deployment, compare these read-only probes:
+
+```sh
+curl --fail --show-error https://simple-sudoku-backend.onrender.com/api/health
+curl --fail --show-error https://simple-sudoku-frontend.onrender.com/api/health
+```
+
+Both must return HTTP 200 and `{"status":"ok"}`. Direct-backend success plus
+frontend 502 points to proxy connectivity/TLS/routing, not necessarily backend
+or database health. A local production frontend container configured with the
+public backend can verify the transport fix without deploying; that does not
+establish that Render is running the fixed image or satisfy issue #13's deployed
+journey/rollback checks. A new candidate still requires independent QA/review
+and fresh authorization before publication/deployment.
+
 ## Deploy and roll back by tag
 
 For the first deployment, use Render's manual image deployment action to deploy
