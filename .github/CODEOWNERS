@@ -1,0 +1,12 @@
+# Human review for specifications and the controls that protect them.
+# Informational ownership for this solo course project.
+# Do not require code-owner approving reviews; independent agent QA/review and
+# recorded user approval of requirement changes are procedural gates.
+/docs/specs/ @sadevaraj
+/.github/CODEOWNERS @sadevaraj
+/AGENTS.md @sadevaraj
+/docs/process.md @sadevaraj
+/docs/spec-governance.md @sadevaraj
+/.github/agents/ @sadevaraj
+# Reserve ownership for CI workflows when they are introduced.
+/.github/workflows/ @sadevaraj
