@@ -17,6 +17,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      target: tests
     environment:
       APP_ENV: development
       DATABASE_HOST: test_database
@@ -26,6 +27,9 @@ services:
       DATABASE_PASSWORD: integration-test-only-password
       SESSION_SECRET: test-only-session-secret-not-for-deployment-123456
       LOGIN_RATE_LIMIT: 5/minute
+      OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+      OTEL_EXPORTER_OTLP_GRPC_ENDPOINT: 127.0.0.1:4317
     depends_on:
       test_database:
         condition: service_healthy

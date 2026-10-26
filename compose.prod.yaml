@@ -1,0 +1,53 @@
+services:
+  database:
+    image: postgres:17.4-alpine
+    environment:
+      POSTGRES_DB: sudoku
+      POSTGRES_USER: sudoku
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a local-only value}
+    volumes:
+      - sudoku-prod-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sudoku -d sudoku"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    image: simple-sudoku-backend:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: production
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://sudoku:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env to a local-only value}@database:5432/sudoku
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env to a local-only value}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-5/minute}
+      COOKIE_SECURE: "false"
+      PORT: "8000"
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+  frontend:
+    image: simple-sudoku-frontend:local
+    build:
+      context: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      API_UPSTREAM: http://backend:8000
+      PORT: "80"
+    ports:
+      - "${PROD_FRONTEND_PORT:-18080}:80"
+
+volumes:
+  sudoku-prod-data:

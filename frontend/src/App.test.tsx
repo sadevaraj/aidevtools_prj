@@ -118,6 +118,9 @@ describe('player journey', () => {
     expect(calls.filter((call) => call.init?.method === 'PUT')).toHaveLength(1);
     const save = calls.find((call) => call.init?.method === 'PUT');
     expect(JSON.parse(String(save?.init?.body)).board[0][0]).toBe(7);
+    const headers = save?.init?.headers as Record<string, string>;
+    expect(headers.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    expect(headers.traceparent).not.toContain("-0000000000000000-");
   });
 
   it('shows completed boards read-only', async () => {

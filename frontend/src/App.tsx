@@ -26,6 +26,18 @@ class ApiError extends Error {
   }
 }
 
+function saveTraceParent(): string | undefined {
+  try {
+    const bytes = new Uint8Array(24);
+    globalThis.crypto.getRandomValues(bytes);
+    const traceId = Array.from(bytes.slice(0, 16), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const parentId = Array.from(bytes.slice(16), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    return `00-${traceId === '0'.repeat(32) ? `${traceId.slice(0, -1)}1` : traceId}-${parentId === '0'.repeat(16) ? `${parentId.slice(0, -1)}1` : parentId}-01`;
+  } catch {
+    return undefined;
+  }
+}
+
 async function csrf(): Promise<string> {
   const response = await fetch('/api/auth/csrf', { credentials: 'include' });
   if (!response.ok) throw new Error('The service is unavailable. Please try again.');
@@ -34,12 +46,14 @@ async function csrf(): Promise<string> {
 }
 
 async function api<T>(path: string, method = 'GET', body?: unknown, token?: string): Promise<T> {
+  const traceParent = method === 'PUT' && /^\/api\/games\/\d+$/.test(path) ? saveTraceParent() : undefined;
   const response = await fetch(path, {
     method,
     credentials: 'include',
     headers: {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
       ...(method !== 'GET' && token ? { 'X-CSRF-Token': token } : {}),
+      ...(traceParent ? { traceparent: traceParent } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });

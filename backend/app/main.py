@@ -17,11 +17,13 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from pwdlib import PasswordHash
+from opentelemetry.trace import Status, StatusCode
 
 from app.config import load_settings
 from app.database import get_db
 from app.models import AuthSession, Game, Player, Puzzle
 from app.sudoku import is_complete, is_valid_solution, preserves_clues, validate_board
+from app.telemetry import instrument_app, tracer
 
 settings = load_settings()
 app = FastAPI(title="Simple Sudoku API", version="1.0.0")
@@ -79,6 +81,11 @@ async def csrf_protection(request: Request, call_next):
         if not _csrf_valid(request):
             return JSONResponse({"detail": "CSRF validation failed."}, status_code=403)
     return await call_next(request)
+
+
+# Keep request observation outside CSRF middleware so even rejected requests
+# produce the same bounded 4xx telemetry as other authentication failures.
+instrument_app(app)
 
 
 def current_player(
@@ -302,14 +309,30 @@ def save_game(
     player: PlayerDependency,
     db: DatabaseDependency,
 ):
-    game = _owned_game(db, game_id, player.id, lock=True)
-    if game.status == "completed":
-        raise HTTPException(status_code=409, detail="Completed games are read-only.")
-    puzzle = db.get(Puzzle, game.puzzle_id)
-    game.board = _validated_board(body.board, puzzle.clues)
-    game.last_saved_at = text("CURRENT_TIMESTAMP")
-    db.commit()
-    db.refresh(game)
+    with tracer.start_as_current_span(
+        "db.save_game",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        span.set_attribute("db.system", "postgresql")
+        span.set_attribute("db.operation", "UPDATE")
+        try:
+            game = _owned_game(db, game_id, player.id, lock=True)
+            if game.status == "completed":
+                raise HTTPException(status_code=409, detail="Completed games are read-only.")
+            puzzle = db.get(Puzzle, game.puzzle_id)
+            game.board = _validated_board(body.board, puzzle.clues)
+            game.last_saved_at = text("CURRENT_TIMESTAMP")
+            db.commit()
+            db.refresh(game)
+        except HTTPException:
+            raise
+        except Exception as error:
+            # Exception messages can contain SQL and bound parameters. Record
+            # only the safe exception type and status, never its value/message.
+            span.set_attribute("error.type", type(error).__name__)
+            span.set_status(Status(StatusCode.ERROR))
+            raise
     return _game_response(game, puzzle)
 
 

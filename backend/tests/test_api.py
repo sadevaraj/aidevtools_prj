@@ -315,6 +315,27 @@ def test_secure_cookie_configuration_no_expiry_and_revoked_cookie_replay(monkeyp
     assert client.get("/api/me").status_code == 401
 
 
+def test_local_http_cookie_override_keeps_httponly_and_samesite(monkeypatch):
+    monkeypatch.setattr(
+        api_module,
+        "settings",
+        api_module.settings.model_copy(update={"cookie_secure": False}),
+    )
+    client = TestClient(app, base_url="http://testserver")
+    token = client.get("/api/auth/csrf").json()["csrfToken"]
+    response = client.post(
+        "/api/auth/register",
+        json={"username": "LocalCookie", "password": "Password1"},
+        headers={"X-CSRF-Token": token},
+    )
+    assert response.status_code == 201
+    cookies = response.headers.get_list("set-cookie")
+    session_header = next(cookie for cookie in cookies if cookie.startswith("sudoku_session="))
+    assert "httponly" in session_header.lower()
+    assert "samesite=lax" in session_header.lower()
+    assert "secure" not in session_header.lower()
+
+
 @pytest.mark.parametrize("path", ["/api/auth/register", "/api/auth/login", "/api/auth/logout",
                                   "/api/games/1", "/api/games/1/submit"])
 def test_all_state_changing_routes_reject_missing_or_forged_csrf(path):

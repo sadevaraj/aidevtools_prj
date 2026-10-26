@@ -1,0 +1,26 @@
+server:
+  http_listen_port: 3200
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+ingester:
+  max_block_duration: 5m
+compactor:
+  compaction:
+    block_retention: 72h
+storage:
+  trace:
+    backend: local
+    block:
+      bloom_filter_false_positive: .05
+      v2_index_downsample_bytes: 1000
+      v2_encoding: zstd
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks

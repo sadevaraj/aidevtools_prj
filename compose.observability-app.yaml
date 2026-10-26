@@ -1,0 +1,19 @@
+services:
+  backend:
+    environment:
+      OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_GRPC_ENDPOINT: otel-collector:4317
+    networks:
+      default: {}
+      observability: {}
+
+  frontend:
+    networks:
+      default: {}
+      observability: {}
+
+networks:
+  observability:
+    external: true
+    name: sudoku-observability
