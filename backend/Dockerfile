@@ -21,5 +21,7 @@ RUN pip install --no-cache-dir --requirement requirements-test.txt
 COPY backend/tests ./tests
 COPY backend/pytest.ini ./pytest.ini
 COPY scripts/test.sh ./scripts/test.sh
+COPY scripts/pipeline.py ./scripts/pipeline.py
+COPY .github/workflows/pipeline.yml ./.github/workflows/pipeline.yml
 
 FROM runtime AS production

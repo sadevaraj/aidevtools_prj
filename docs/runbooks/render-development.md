@@ -5,6 +5,15 @@ This runbook records the owner-operated sequence from issue
 only: issue #16's local image work does not push GHCR images, create Render
 resources, enter secrets, or deploy. Do not modify or use Kanban resources.
 
+The [issue #12 pipeline runbook](pipeline.md) covers the separately approved
+CI/GHCR/opt-in development CD implementation. The
+[later approval](https://github.com/sadevaraj/aidevtools_prj/issues/12#issuecomment-6428965305)
+allows implementation before #13, but **CD stays disabled until deployed
+verification and owner setup**. Initial manual deployment below is still needed.
+No new workflow/registry/deployment success is claimed; the hosted frontend's
+latest reported proxied API check was HTTP 502. Local telemetry is not Render
+telemetry; Actions failure notifications are not runtime alerts or automatic fixes.
+
 ## Delivery order and local gate
 
 1. Build and validate the frontend/backend runtime images locally with
@@ -45,8 +54,10 @@ resources, enter secrets, or deploy. Do not modify or use Kanban resources.
    before provisioning; the free database has a 1 GB limit, expires after 30
    days, and has no managed backups. Plan an owner-operated export before expiry.
 5. After the owner deploys the paired image tags, agents verify deployed behavior
-   and rollback under issue #13. CI-gated image publication is deferred to issue
-   #12. Do not report local results as Render verification.
+   and rollback under issue #13. Issue #12's implementation may proceed earlier
+   under the approval above, but automatic CD must remain off until #13 passes
+   and the owner completes the pipeline setup. Do not report local results as
+   Render verification.
 
 ### Deployment choice still requiring owner confirmation
 

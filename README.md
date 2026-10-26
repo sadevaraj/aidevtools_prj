@@ -5,6 +5,21 @@ account, choose one of three verified easy puzzles, save progress manually, and
 resume their own game later. FastAPI persists accounts and games in PostgreSQL;
 React serves the browser experience through a same-origin API proxy.
 
+## Try the development app
+
+Open [Simple Sudoku on Render](https://simple-sudoku-frontend.onrender.com/).
+Use a desktop browser, register your own account, then log in with the same
+username and password when returning. There is no shared demo account.
+Passwords cannot be recovered, so use a unique test password that you do not
+use elsewhere. Choose one of the three puzzles and select **Save progress**
+to persist your entries; changes are not saved automatically.
+
+The frontend page is reachable, but the latest deployed API health check returned
+HTTP 502. The HTTPS proxy fix is published in image tag
+`8203244224f5f62fd3a24ad6de48c358b8f638e9`; the owner must deploy the corrected
+image pair and verify the full journey before the hosted app is considered ready.
+See the [Render deployment runbook](docs/runbooks/render-development.md).
+
 ## Product rules
 
 The authoritative [product specification](docs/specs/product.md) defines
@@ -122,7 +137,7 @@ The script does not log in or push.
 
 ## Delivery order
 
-The owner-approved sequence is:
+The initial owner-approved sequence is:
 
 1. Build and test the production images locally under
    [issue #16](https://github.com/sadevaraj/aidevtools_prj/issues/16).
@@ -132,8 +147,19 @@ The owner-approved sequence is:
    [Render development runbook](docs/runbooks/render-development.md).
 3. Agents independently verify the deployed development service and rollback
    under [issue #13](https://github.com/sadevaraj/aidevtools_prj/issues/13).
-4. Only after #13, implement CI-gated image publication under
+4. Under the [subsequent approval](https://github.com/sadevaraj/aidevtools_prj/issues/12#issuecomment-6428965305),
+   pipeline **implementation** may precede #13. CI-gated publication and
+   disabled-by-default Render development CD are now configured under
    [issue #12](https://github.com/sadevaraj/aidevtools_prj/issues/12).
+   Successful deployed verification under #13 remains mandatory before the owner
+   enables CD. No workflow execution or remote success is claimed here.
+
+The [pipeline runbook](docs/runbooks/pipeline.md) documents PR/main tests,
+main-only paired SHA/digest publication with `GITHUB_TOKEN`, exact-image Render
+deployment, owner variables/environment secret setup, failure notifications,
+and operator fallback. Both CD flags default off; no Render credentials are
+available to this implementation. GitHub Actions failure notifications require
+the owner's account preferences; they are not log alerting or autonomous repair.
 
 Production deployment is deferred. Local tests, image builds, and any CI checks
 do not by themselves establish a successful GHCR publication or Render
@@ -213,6 +239,9 @@ responses. Those tests use Docker and the same host `openssl` prerequisite as
 local setup; they generate and remove disposable local TLS material, without
 contacting Render. Run only that focused suite with
 `sh scripts/test-frontend-proxy.sh`.
+Backend tests also validate the pipeline YAML and exercise deployment success,
+authorization/target gates, exact digest checks, API failures, partial deployment
+and bounded polling with offline mocks; these tests never mutate Render.
 The root command exits nonzero on any failed suite and removes
 only its own test containers/network. It never mounts or deletes the developer
 application database volume.

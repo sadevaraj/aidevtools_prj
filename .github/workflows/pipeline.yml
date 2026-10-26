@@ -1,0 +1,116 @@
+name: Sudoku pipeline
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Do not cancel an in-flight paired deployment when a newer commit arrives.
+concurrency:
+  group: sudoku-pipeline-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Unit, PostgreSQL, frontend build and proxy regressions
+        run: sh scripts/test.sh
+
+  publish:
+    needs: tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'sadevaraj/aidevtools_prj'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      backend_digest: ${{ steps.backend.outputs.digest }}
+      frontend_digest: ${{ steps.frontend.outputs.digest }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish backend
+        id: backend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: production
+          push: true
+          tags: ghcr.io/sadevaraj/simple-sudoku-backend:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/sadevaraj/aidevtools_prj
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Publish frontend
+        id: frontend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: frontend
+          push: true
+          tags: ghcr.io/sadevaraj/simple-sudoku-frontend:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/sadevaraj/aidevtools_prj
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Record image pair (including partial publication)
+        if: always()
+        env:
+          BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest }}
+          RENDER_DEV_CD_ENABLED: ${{ vars.RENDER_DEV_CD_ENABLED }}
+          RENDER_DEV_VERIFIED: ${{ vars.RENDER_DEV_VERIFIED }}
+        run: python3 scripts/pipeline.py record-pair
+      - name: Retain immutable image identity
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: image-pair-${{ github.sha }}
+          path: image-pair.json
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy-development:
+    needs: [tests, publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'sadevaraj/aidevtools_prj' && vars.RENDER_DEV_CD_ENABLED == 'true' && vars.RENDER_DEV_VERIFIED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: sudoku-development
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Deploy exact published development pair
+        env:
+          BACKEND_DIGEST: ${{ needs.publish.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.publish.outputs.frontend_digest }}
+          RENDER_DEV_CD_ENABLED: ${{ vars.RENDER_DEV_CD_ENABLED }}
+          RENDER_DEV_VERIFIED: ${{ vars.RENDER_DEV_VERIFIED }}
+          RENDER_DEV_VERIFICATION_URL: ${{ vars.RENDER_DEV_VERIFICATION_URL }}
+          RENDER_DEV_BACKEND_SERVICE_ID: ${{ vars.RENDER_DEV_BACKEND_SERVICE_ID }}
+          RENDER_DEV_FRONTEND_SERVICE_ID: ${{ vars.RENDER_DEV_FRONTEND_SERVICE_ID }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: python3 scripts/pipeline.py deploy
+      - name: Retain deployment result, including partial failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: render-development-${{ github.sha }}
+          path: deployment-result.json
+          if-no-files-found: error
+          retention-days: 30
