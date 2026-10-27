@@ -134,6 +134,73 @@ query, so it must not report healthy if the database or initialization is
 unavailable. The browser reaches the API through the frontend proxy, not this
 backend service directly.
 
+### Optional Grafana Cloud OTLP export
+
+Issue #17 implements authenticated HTTPS OTLP export for traces, metrics, and
+logs. This is optional application code, not an applied Render setting. The
+owner must configure the backend Web Service only, using private Render
+environment variables and credentials from the selected Grafana Cloud stack.
+Never put an ingestion token or encoded credential in Git, chat, logs, or an
+issue comment. The frontend needs no OTLP credential.
+
+In Grafana Cloud, open the selected stack's OpenTelemetry/OTLP setup and copy
+its OTLP gateway endpoint and generated authentication header. Use the
+stack-specific endpoint from Grafana; its generic form is
+`https://otlp-gateway-<region>.grafana.net/otlp`. Add these values to the
+backend service's Render environment:
+
+| Variable | Value |
+| --- | --- |
+| `OTEL_ENABLED` | `true` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Grafana's HTTPS OTLP base endpoint, for example `https://otlp-gateway-<region>.grafana.net/otlp` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Grafana's generated `Authorization` header in OTLP environment-variable form; for Python, encode the space after `Basic` as `%20`, e.g. `Authorization=Basic%20<base64-instance-id-and-token>` |
+
+Use the gateway base endpoint ending in `/otlp`, not a signal path. With
+`OTEL_EXPORTER_OTLP_ENDPOINT`, the application appends `/v1/traces`,
+`/v1/metrics`, and `/v1/logs` once, following the OTLP/HTTP convention. If
+using signal-specific `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, or
+`OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` instead, each value is the complete URL for
+that signal and is passed as-is. Standard signal-specific header variables
+override the shared `OTEL_EXPORTER_OTLP_HEADERS` value. Every signal must have
+an `Authorization` header and an HTTPS URL; invalid values stop backend
+startup with a sanitized configuration error. TLS certificate verification
+remains enabled. Do not set these cloud variables for the local Compose
+collector; leaving `OTEL_EXPORTER_OTLP_PROTOCOL` unset preserves the existing
+local HTTP traces/logs and gRPC metrics setup. Unauthenticated local mode accepts
+only `http://otel-collector:4318` with `otel-collector:4317` (the Compose service),
+or explicit loopback hosts `127.0.0.1`, `localhost`, and `[::1]` on HTTP port
+4318 and gRPC port 4317. It does not trust arbitrary private IPs or internal-looking
+DNS names. Signal-specific endpoint overrides require authenticated HTTPS cloud
+mode; they cannot bypass this local boundary. Unsupported destinations are
+rejected before any exporter is constructed.
+
+After the owner applies and restarts the backend service, verify from Grafana
+Cloud using a disposable account/game:
+
+1. Save progress once through the public frontend and wait for exporter
+   delivery. Confirm a `sudoku-api` trace for
+   `PUT /api/games/{game_id}` appears, including the `db.save_game` child span.
+2. In Logs/Explore, find the metadata-only `http_request` record for the same
+   trace ID and confirm the save outcome. The record must not contain a
+   username, password, session/CSRF value, cookie, request body, or board.
+3. In Metrics/Explore, inspect `sudoku_save_requests` or
+   `sudoku_http_requests`; confirm the save outcome is present without trace IDs
+   as metric labels. Follow an available metric exemplar to its trace.
+4. Confirm the save completed in the application and inspect safe backend
+   diagnostics if export fails. Export outages must not prevent a save.
+
+This runbook records no real endpoint, credential, applied Render setting, or
+remote Grafana result. No Grafana Cloud ingestion, dashboard, or remote
+correlation has been verified by this implementation. The owner must check the
+current stack's limits/retention and perform the above verification before
+claiming remote telemetry evidence. Local Compose success is not a substitute.
+
+References: [Grafana Cloud OTLP endpoint guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/),
+[OpenTelemetry OTLP exporter environment variables](https://opentelemetry.io/docs/specs/otel/protocol/exporter/),
+and [OpenTelemetry SDK environment variable conventions](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/).
+
 ## Render frontend Web Service
 
 Create a second Web Service from an existing public container image. Suggested

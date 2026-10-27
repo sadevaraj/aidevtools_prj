@@ -14,11 +14,16 @@ Passwords cannot be recovered, so use a unique test password that you do not
 use elsewhere. Choose one of the three puzzles and select **Save progress**
 to persist your entries; changes are not saved automatically.
 
-The frontend page is reachable, but the latest deployed API health check returned
-HTTP 502. The HTTPS proxy fix is published in image tag
-`8203244224f5f62fd3a24ad6de48c358b8f638e9`; the owner must deploy the corrected
-image pair and verify the full journey before the hosted app is considered ready.
-See the [Render deployment runbook](docs/runbooks/render-development.md).
+On 2026-10-27, both the [hosted frontend API health check](https://simple-sudoku-frontend.onrender.com/api/health)
+and [backend health check](https://simple-sudoku-backend.onrender.com/api/health)
+returned HTTP 200 with `{"status":"ok"}`. The [pipeline run](https://github.com/sadevaraj/aidevtools_prj/actions/runs/40416450021)
+successfully published the paired images tagged
+`87938670ba11da9b036233b803e712f81efe3378`, but its Render deploy job was
+skipped; this tag is therefore not confirmed as deployed. The full browser
+journey, backend-restart persistence check, and deployment/rollback verification
+remain outstanding under [issue #13](https://github.com/sadevaraj/aidevtools_prj/issues/13).
+Health-check success and published images alone do not establish full deployment
+verification. See the [Render deployment runbook](docs/runbooks/render-development.md).
 
 ## Product rules
 
@@ -213,10 +218,14 @@ docker compose -p sudoku-app -f compose.yaml -f compose.observability-app.yaml d
 docker compose -p sudoku-observability -f compose.observability.yaml down
 ```
 
-Local telemetry does not establish telemetry collection from Render. A secure
-remote destination, network reachability, retention, and budget remain
-unresolved; no remote correlation is configured or claimed. User-impact alerts
-and automatic recovery are not part of issue #15 and are not implemented here.
+Issue #17 implements an opt-in authenticated HTTPS OTLP path for traces, metrics,
+and logs using standard OpenTelemetry endpoint/header variables. It is not
+enabled by default: the local HTTP traces/logs and gRPC metrics configuration
+remains the default. No Render settings or credentials have been applied and no
+remote Grafana ingestion or correlation has been verified. See the
+[Render OTLP setup and verification runbook](docs/runbooks/render-development.md#optional-grafana-cloud-otlp-export)
+for owner-operated configuration steps. User-impact alerts and automatic
+recovery are not part of issue #15 and are not implemented here.
 
 ## Developer verification
 
@@ -256,10 +265,12 @@ The developer checks do not represent remote CI or deployment verification.
 The engineering choices and verification implications are recorded in
 [ADR-0001](docs/adr/0001-core-implementation-decisions.md). The
 [architecture](docs/architecture.md) covers the complete delivery plan.
-Local observability is available as the opt-in stack above. Deployment and
-CI/CD are separate scope; secure remote Render telemetry destination,
-reachability, retention, and budget remain unresolved. Alerts and runtime
-automatic recovery are not implemented or claimed by issue #15.
+Local observability is available as the opt-in stack above, and issue #17 adds
+optional authenticated HTTPS OTLP exporter support. Deployment and CI/CD remain
+separate scope. The owner must configure the Grafana Cloud endpoint and private
+Render backend variables, then verify remote ingestion; no remote setup or
+correlation is claimed. Alerts and runtime automatic recovery are not
+implemented or claimed by issue #15.
 
 The [delivery process](docs/process.md), [agent team](.github/agents/README.md),
 and [shared specification guard](.github/agents/guards/specification-changes.md)

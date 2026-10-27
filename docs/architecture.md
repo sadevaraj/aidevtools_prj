@@ -63,10 +63,13 @@ filesystem is not a substitute for managed persistent storage.
 
 The owner-approved delivery order in issue #11 is: build and verify images locally
 (issue #16); the owner manually pushes the public GHCR image pair and manually
-configures Render; agents verify deployed behavior and rollback in issue #13;
-CI-gated image publication is deferred to issue #12. No GHCR push, Render
-provisioning, or deployment is part of local development evidence. All published
-and deployed versions must identify the exact paired image tags.
+configures Render; agents verify deployed behavior and rollback in issue #13.
+CI-gated image publication and disabled-by-default development CD are configured
+under issue #12. Keep Render deployment on the existing Render API path using
+the exact immutable digests for the paired images; generic Render deploy hooks
+are not in scope. No GHCR push, Render provisioning, or deployment is part of
+local development evidence. All published and deployed versions must identify
+the exact paired image digests.
 
 ## Initial Development Deployment
 
@@ -79,7 +82,9 @@ and deployed versions must identify the exact paired image tags.
   two Render Web Services to pull the exact image tags. Set the backend database
   to the new Sudoku database's Internal Database URL; set the frontend's
   `API_UPSTREAM` to the backend's internal service address.
-- CI-gated publication and any automated deployment are deferred to issue #12.
+- CI-gated publication and disabled-by-default Render development CD are
+  configured under issue #12. Successful deployed verification under issue #13
+  remains mandatory before the owner enables CD.
 - Record immutable image references for the deployed frontend/backend pair.
 - Verify development after deployment, including
   login, puzzle loading, save/resume, and the expected deployed version.
@@ -121,7 +126,9 @@ demonstrate remote CI, Render configuration, or deployment success.
 ## Observability
 
 The owner approved logs, metrics, and traces using the Kanban project's approach
-on 26 October 2026. This is implementation scope, not a completed capability.
+on 26 October 2026. This is implementation scope, not a completed remote capability. Local
+instrumentation and the opt-in exporter implementation are available; owner-side
+Grafana and Render configuration and remote verification remain follow-up work.
 
 - Use OpenTelemetry instrumentation and an OpenTelemetry Collector.
 - Provide a separate local observability Compose stack with Prometheus (metrics),
@@ -144,11 +151,16 @@ on 26 October 2026. This is implementation scope, not a completed capability.
   Test redaction and exporter failure handling; telemetry outages must not make
   successful saves fail, and exporter errors must be visible diagnostically.
 
-The local stack does not prove telemetry from Render is collected. Agree on a
-secure, reachable destination, retention, and budget before remote telemetry
-configuration. Do not expose the local anonymous stack to receive internet traffic.
-User-impact alerts and bounded automatic remediation are also approved scope,
-as described below.
+Issue #17 implements an explicit `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`
+mode for authenticated HTTPS export of all three signals. The local HTTP/gRPC
+collector path remains the default. This code does not configure Render or
+Grafana, enter credentials, or demonstrate remote collection: the owner must
+set the private backend environment variables and independently verify
+reachability, retention, and current plan limits. Do not expose the local stack
+to receive internet traffic or claim remote telemetry configuration or
+deployed correlation.
+A bounded save-failure alert is separately approved and tracked under issue #18;
+automatic recovery and broader alerting remain deferred as described below.
 
 ### Local observability run and evidence (implementation note)
 
@@ -156,48 +168,39 @@ The independent local stack is `compose.observability.yaml`; the application opt
 
 The provisioned dashboard distinguishes expected 4xx rejections from server errors and shows request rate, latency, and save outcomes. Request labels use method, route template, status class, and finite outcome values; trace IDs never become metric labels. Trace context is created for manual save requests, passed by the frontend Nginx proxy, and continued by the API and database save span. Structured logs are metadata-only and correlate by trace ID. Follow the README procedure to inspect the dashboard, trace, database child span, correlated log, and the metric exemplar link; capture independent UI evidence during QA.
 
-These are local-only results. They do not establish Render telemetry collection. A secure remote destination, reachability, retention, and budget remain unresolved and require an explicit decision before remote telemetry is configured or any deployed correlation is claimed. Issue #15 does not implement alerts or automatic recovery.
+These are local-only results. They do not establish Render telemetry collection.
+Issue #17's exporter support is code-only; the owner must configure the Grafana
+Cloud OTLP destination on the private Render backend and verify each signal
+before claiming remote correlation. Current account limits and retention must
+be checked by the owner. Issue #15 does not implement alerts or automatic
+recovery.
 
-## User-Impact Alerts and Automatic Recovery
+## Approved Save-Failure Alert and Deferred Runtime Responder
 
-The owner requested alerting and fixing alongside observability on 26 October
-2026, using Kanban as the intended reference. The exact Kanban alert/fix mechanism
-has not been verified in the inspected local files; do not claim it is reused or
-implemented until its source/configuration is identified.
+The current owner decision for issue #14 remains CI/CD-only for runtime agents:
+it excludes an added model service, a runtime incident responder, and automatic
+recovery. The owner-recorded approval is in
+[issue comment #6429857047](https://github.com/sadevaraj/aidevtools_prj/issues/14#issuecomment-6429857047).
+The user later approved one narrowly scoped operational alert in chat on
+2026-10-27; the approval is recorded as agent-authored evidence in
+[issue #18](https://github.com/sadevaraj/aidevtools_prj/issues/18#issuecomment-6436151791).
 
-- Alert on failure of a real user journey, initially saving game progress, using
-  the instrumented outcomes rather than CPU usage or a static health response.
-- Exclude expected invalid-input and authorization rejections from service-outage
-  counts. Define a measurable threshold, evaluation window, and no-data behaviour
-  before implementation, accounting for Render free-service cold starts.
-- Deliver alerts to a responder and record an incident with relevant sanitized
-  evidence. Group duplicate alerts and limit notifications/actions to prevent storms.
-- An alert wakes a runtime on-call agent, separate from the development agents.
-  It investigates evidence and may perform only an explicitly allow-listed
-  recovery action for a recognized failure in Sudoku development.
-- Select and approve one concrete fault/recovery pair before implementing tools.
-  Candidate actions such as restarting a service or rolling back an image are not
-  automatically authorized by this plan and must fit Render's available APIs,
-  permissions, and database compatibility constraints.
-- Never expose arbitrary shell execution, database resets, credential changes,
-  generated code deployment, or access to Kanban/production to the responder.
-- Use finite attempts, action cooldowns, scoped credentials, and an auditable
-  timeline. Unknown failures, exhausted attempts, or ineligible actions stop
-  automation and explicitly request operator attention.
-- Verify the selected real user journey after recovery, using isolated synthetic
-  Sudoku data where necessary. A tool returning success is not proof of recovery.
-  Keep incidents unresolved if verification fails; never loop indefinitely.
-- Provide a safe, documented development-only failure trigger for the agreed
-  scenario and demonstrate alert -> agent -> permitted action -> verified recovery.
-- Test alert rules, deduplication, action eligibility, attempt limits, tool errors,
-  and verification failures. Record actual end-to-end evidence, not simulated
-  claims of a remote fix.
+Issue #18 tracks a Grafana Cloud-managed alert rule over the existing bounded
+`sudoku_save_requests_total` metric for at least one save-operation HTTP 5xx in a
+rolling five-minute window, delivered through a Grafana webhook contact point.
+This is notification only: no application-hosted receiver, automatic
+remediation, or runtime/on-call agent is in scope. Expected 4xx outcomes and
+telemetry-export failures are not save-failure alerts. A missing metric sample
+does not itself establish a qualifying save 5xx; broader telemetry no-data
+alerting remains undecided. The owner must manage any real webhook destination
+and authentication privately. No Grafana Cloud/Render settings, credentials,
+remote delivery, or deployed alert have been applied or verified here.
 
-This approves the capability, not arbitrary remediation actions, new paid
-services, or deployment of unreviewed changes. Notification destination, runtime
-model/tool implementation, trigger hosting, and the exact recovery scenario still
-require design agreement. A recorded human recovery alone does not demonstrate
-the alert-triggered agent criterion.
+Other previously discussed candidates—including a disposable local Compose
+PostgreSQL stop/start recovery pair—remain deferred. No model, responder,
+automatic recovery, fault execution, or broader operational alerting is
+approved by the narrow issue #18 decision. Any expansion requires a separate
+owner decision and agreed scope.
 
 ## Remaining Operational Decisions and Follow-up
 
@@ -217,9 +220,13 @@ the alert-triggered agent criterion.
   same-origin proxy. See the Render runbook for the decision and source links.
 - The frontend reverse proxy and its runtime `API_UPSTREAM` setting are
   implemented. Issue #13 must verify the deployed same-origin cookie/CSRF flow.
-- Exact CI triggers and automated publication/deployment mechanics are deferred
-  to issue #12. The owner performs initial GHCR publication and Render setup.
+- CI-gated publication and disabled-by-default Render development CD are
+  configured under issue #12. The owner performs initial GHCR publication and
+  Render setup; successful deployed verification under issue #13 is required
+  before the owner enables CD.
 - Secure telemetry destination for Render, retention, and hosting/free-tier limits.
-- Alert thresholds/no-data policy, notification and responder hosting, runtime
-  model access/cost if needed, and one approved fault/recovery scenario with
-  verification and scoped permissions.
+- Issue #18 is the approved exception for a Grafana Cloud-managed save-5xx alert
+  and webhook contact point; it must pass its delivery gates before closure.
+  Broader user-impact alerts and telemetry no-data policy, runtime
+  model/responder design, and any fault/recovery scenario remain deferred and
+  require separate owner approval.
