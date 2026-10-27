@@ -225,7 +225,9 @@ remains the default. No Render settings or credentials have been applied and no
 remote Grafana ingestion or correlation has been verified. See the
 [Render OTLP setup and verification runbook](docs/runbooks/render-development.md#optional-grafana-cloud-otlp-export)
 for owner-operated configuration steps. User-impact alerts and automatic
-recovery are not part of issue #15 and are not implemented here.
+recovery are not part of issue #15. Issue #18 adds a separately approved,
+Grafana Cloud-managed save-5xx alert configuration; see the
+[alert configuration notes](observability/grafana-cloud-alert/README.md).
 
 ## Developer verification
 
@@ -275,6 +277,42 @@ implemented or claimed by issue #15.
 The [delivery process](docs/process.md), [agent team](.github/agents/README.md),
 and [shared specification guard](.github/agents/guards/specification-changes.md)
 describe how issues, DEV evidence, independent QA, and review are handled.
+
+## Approved alert-to-Copilot development path
+
+Issue [#19](https://github.com/sadevaraj/aidevtools_prj/issues/19) tracks a
+development-only authenticated Grafana alert receiver and bounded repair path.
+It is **disabled by default** and runs in the existing Sudoku backend; therefore
+it cannot receive an alert while that backend is down. It accepts only the
+expected development save-server-error firing event, persists a sanitized,
+deduplicated outbox record before acknowledgement, and dispatches to a fixed
+workflow/repository/ref. A GitHub Actions OIDC identity must claim the same
+server-issued, unexpired database incident before candidate execution; a
+per-incident run/attempt claim prevents ambiguous dispatch retries or manual
+fabricated inputs from starting another worker. No database credential is
+shared with the workflow. It does not change the notification-only requirements
+of [issue #18](https://github.com/sadevaraj/aidevtools_prj/issues/18).
+
+The workflow selects the existing `Prj_Coordinator` via Copilot CLI
+`--agent`/`--prompt`, with the repository's existing DEV/QA/Reviewer custom
+agent definitions. It is gated on owner confirmation of Free entitlement,
+available quota, no overage, and provider-transmission approval. Copilot CLI
+requests use `GITHUB_TOKEN` with `copilot-requests: write`; owner-managed
+dispatch and separate PR-publication credentials are required for eventual
+remote operation. No tokens or provider calls are included in local setup.
+The owner must also set the HTTPS `ALERT_REPAIR_AUTH_URL` repository variable
+to the backend's exact claim endpoint before enabling Actions; the disabled
+workflow fails closed if it is absent or does not match the durable incident.
+Candidate changes are restricted to the approved save-handler typo correction
+and regression test; merge and deployment remain human-controlled.
+
+The deliberate `body.borad` failure is a **temporary isolated test fixture**,
+not an observed existing defect. Broken source is never committed, and no
+live fault injection or deployed demonstration is authorized by this
+implementation. Local PostgreSQL/mock tests do not verify Copilot provider
+execution, GitHub Actions, Grafana delivery, Render, or recovery. Remote setup
+remains **NOT VERIFIED**; issues #12 and #13 remain later prerequisites to any
+separately approved development deployment demonstration.
 
 Course brief:
 https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project

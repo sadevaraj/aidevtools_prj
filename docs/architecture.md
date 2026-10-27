@@ -160,7 +160,9 @@ reachability, retention, and current plan limits. Do not expose the local stack
 to receive internet traffic or claim remote telemetry configuration or
 deployed correlation.
 A bounded save-failure alert is separately approved and tracked under issue #18;
-automatic recovery and broader alerting remain deferred as described below.
+unrestricted automatic recovery and broader alerting remain deferred. The
+separately approved development-only repair workflow under issue #19 is
+described below.
 
 ### Local observability run and evidence (implementation note)
 
@@ -175,12 +177,15 @@ before claiming remote correlation. Current account limits and retention must
 be checked by the owner. Issue #15 does not implement alerts or automatic
 recovery.
 
-## Approved Save-Failure Alert and Deferred Runtime Responder
+## Approved Save-Failure Alert and Original Responder Scope
 
-The current owner decision for issue #14 remains CI/CD-only for runtime agents:
-it excludes an added model service, a runtime incident responder, and automatic
-recovery. The owner-recorded approval is in
+The original owner decision for issue #14 limited runtime-agent work to CI/CD,
+excluding an added model service, a runtime incident responder, and automatic
+recovery. The original owner-recorded approval is in
 [issue comment #6429857047](https://github.com/sadevaraj/aidevtools_prj/issues/14#issuecomment-6429857047).
+The later issue #19 approval below permits a bounded development-only receiver
+and tested repair-PR workflow. It does not authorize automatic merge,
+deployment, rollback, production repair, or unrestricted remediation.
 The user later approved one narrowly scoped operational alert in chat on
 2026-10-27; the approval is recorded as agent-authored evidence in
 [issue #18](https://github.com/sadevaraj/aidevtools_prj/issues/18#issuecomment-6436151791).
@@ -188,8 +193,8 @@ The user later approved one narrowly scoped operational alert in chat on
 Issue #18 tracks a Grafana Cloud-managed alert rule over the existing bounded
 `sudoku_save_requests_total` metric for at least one save-operation HTTP 5xx in a
 rolling five-minute window, delivered through a Grafana webhook contact point.
-This is notification only: no application-hosted receiver, automatic
-remediation, or runtime/on-call agent is in scope. Expected 4xx outcomes and
+Issue #18 is notification only: no application-hosted receiver, automatic
+remediation, or runtime/on-call agent is in that issue's scope. Expected 4xx outcomes and
 telemetry-export failures are not save-failure alerts. A missing metric sample
 does not itself establish a qualifying save 5xx; broader telemetry no-data
 alerting remains undecided. The owner must manage any real webhook destination
@@ -197,10 +202,110 @@ and authentication privately. No Grafana Cloud/Render settings, credentials,
 remote delivery, or deployed alert have been applied or verified here.
 
 Other previously discussed candidates—including a disposable local Compose
-PostgreSQL stop/start recovery pair—remain deferred. No model, responder,
-automatic recovery, fault execution, or broader operational alerting is
-approved by the narrow issue #18 decision. Any expansion requires a separate
-owner decision and agreed scope.
+PostgreSQL stop/start recovery pair—remain deferred. These exclusions remain
+the scope of issue #18; its notification-only criteria are unchanged. The
+separately approved, bounded development responder is tracked under issue #19
+below and is not part of issue #18.
+
+## Approved Development-Only Alert-to-Copilot Repair
+
+On 27 October 2026 the user approved in chat: “Approve development-only
+authenticated alert receiver, bounded repair workflow, tests and documentation;
+update the plan/architecture and GitHub tracking accordingly.” The authority
+boundary is: “Agent diagnoses and opens a tested fix PR; I approve merge and
+deployment.” This is agent-recorded chat evidence, not a human-authored GitHub
+comment; issue #19 records the exact excerpt and date.
+
+Issue #19 adds a development-only path for the existing save-server-error
+FIRING alert without changing issue #18's notification-only requirements:
+
+1. Grafana posts to one authenticated, bounded route on the existing Sudoku
+   backend. The feature is disabled by default; only the expected save 5xx
+   rule, development backend, firing state, and positive rule evaluation value
+   are accepted. Query errors and no-data do not qualify. Only the webhook
+   receiver and separate OIDC-validated claim endpoint are exempt from CSRF;
+   normal state-changing APIs retain their existing checks.
+2. PostgreSQL stores only a hashed incident identifier and fixed lifecycle
+   metadata in an Alembic-managed outbox. A transaction lock, unique key, rate
+   limit, 30-minute deduplication/TTL, lease, three-attempt cap, bounded retry,
+   and operator kill switch prevent replay storms and unbounded work. The
+   receiver acknowledges only after commit and emits safe, sanitized failure
+   diagnostics. A lost GitHub dispatch response can cause a bounded retry and
+   duplicate workflow starts; a durable per-incident claim, bound to the
+   authenticated GitHub Actions run ID and attempt, allows only one run to
+   proceed. Because this receiver runs in the Sudoku backend, it cannot accept
+   alerts while that backend is down.
+3. The outbox dispatches only to the fixed repository, workflow, and `main`
+   ref. The workflow is manually dispatchable and disabled unless
+   owner-controlled variables confirm the Free entitlement, current quota,
+   no-overage status, privacy approval, and feature enablement. The account's
+   remaining quota is unknown; no paid eligibility probe is performed.
+   Before candidate execution, the workflow obtains a GitHub OIDC identity
+   token and the backend validates its signature, audience, repository, ref,
+   event, and exact workflow. The backend checks that the incident exists in
+   PostgreSQL, has a server-issued unexpired TTL and prior dispatch attempt,
+   then atomically consumes a one-time claim for that run/attempt. Replays by
+   another run or workflow attempt, fabricated IDs, and expired incidents fail
+   closed. Candidate execution, verification, and publication are all gated on
+   success of that authorization job and trusted job outputs containing the
+   consumed incident, expiry, run ID and attempt. Every downstream gate compares
+   those outputs with its **current** run ID/attempt before provider execution,
+   patch verification, or publication credentials. A failed-job or specific-job
+   rerun cannot reuse successful authorization from an earlier attempt; rerun-all
+   must claim again and is rejected for an already consumed incident. Artifacts
+   are attempt-qualified, so a later attempt cannot use a previous patch.
+   No database URL
+   or database credential is provided to Actions, and the OIDC minting
+   credential is not passed to candidate/test subprocesses.
+4. The candidate job uses the pinned GitHub Copilot CLI `1.0.103` with
+   `GITHUB_TOKEN` and `copilot-requests: write`; GitHub documents CLI access on
+   all plans, including Free, and bills personal-repository usage to the owner
+   seat. The command selects the existing `Prj_Coordinator` custom agent with
+   `--agent Prj_Coordinator --prompt ...`; the coordinator's declared
+   `Prj_Dev`, `Prj_QA`, and `Prj_Reviewer` children are verified from the actual
+   repository agent definitions. The CLI has no contents-write or PR token;
+   the runtime fails closed if agent IDs, owner gates, incident TTL, or patch
+   policy do not match.
+5. Candidate changes are limited to the exact approved
+   `body.borad` → `body.board` correction and its regression test. The candidate
+   cannot author or modify test code: the runner requires the complete existing
+   isolated failure/rollback/persisted-save regression to match its pinned
+   trusted fingerprint. Missing or changed regression code fails closed before
+   patch application or publication; only the typo correction is accepted.
+   The candidate
+   job has no live database, Render, or PR-publication credentials. A separate
+   unprivileged job applies the path/size/function-limited patch and runs
+   `sh scripts/test.sh`. Only a later isolated publication job receives the
+   owner-managed `ALERT_REPAIR_PR_TOKEN`; it applies the already tested patch
+   without executing candidate code. This distinct credential makes the PR
+   event trigger the ordinary PR pipeline instead of relying on the
+   non-triggering `GITHUB_TOKEN` event. Human merge and deployment remain
+   mandatory; the existing deployment pipeline is reused only after merge.
+
+Owner-operated configuration is not applied here. The owner must privately
+configure the backend `ALERT_RECEIVER_TOKEN` and least-privilege
+`ALERT_DISPATCH_TOKEN`, and the repository `ALERT_REPAIR_AUTH_URL`,
+`ALERT_REPAIR_PR_TOKEN` plus explicitly reviewed Free/quota/no-overage/privacy/
+enablement variables before any future execution. `ALERT_REPAIR_AUTH_URL` must
+equal `https://simple-sudoku-backend.onrender.com/api/alerts/repair/claim`
+exactly; alternate hosts, ports, credentials, query strings and fragments are
+rejected before minting an identity token. Authorization HTTP requests never
+follow redirects or use ambient proxies. OIDC/claim JSON responses are limited
+to 16 KiB, with 5-second socket timeouts and elapsed-read deadlines.
+The backend fetches only GitHub's fixed public JWKS URL, without redirects or
+ambient proxies, with the same timeout/deadline and a 32 KiB/16-key cap. Its
+process-shared, locked cache lasts at most 5 minutes; unknown key IDs do not
+cause refetches, failures clear expired keys and suppress fetches for 30 seconds,
+and no automatic fetch retries or stale-key fallback are allowed. Rotation may
+temporarily fail closed until the next refresh. The workflow's
+`id-token: write` permission is scoped to the isolated authorization job; the
+endpoint accepts only GitHub's signed OIDC token for the fixed workflow.
+This task does not create tokens, configure remote
+settings, transmit repository data to Copilot, or run Copilot, Actions, Grafana,
+or Render. The proposed isolated typo test is a deliberate local test fixture,
+not an observed production defect. It does not authorize committing broken
+source or injecting a live fault. Issues #12 and #13 remain prerequisites for
+any later deployed demonstration, not for disabled local implementation.
 
 ## Remaining Operational Decisions and Follow-up
 
@@ -225,8 +330,9 @@ owner decision and agreed scope.
   Render setup; successful deployed verification under issue #13 is required
   before the owner enables CD.
 - Secure telemetry destination for Render, retention, and hosting/free-tier limits.
-- Issue #18 is the approved exception for a Grafana Cloud-managed save-5xx alert
-  and webhook contact point; it must pass its delivery gates before closure.
-  Broader user-impact alerts and telemetry no-data policy, runtime
-  model/responder design, and any fault/recovery scenario remain deferred and
-  require separate owner approval.
+- Issue #18 remains the Grafana Cloud-managed save-5xx notification and contact
+  point; it must pass its delivery gates before closure. Issue #19 separately
+  tracks the approved disabled-by-default local receiver and bounded repair
+  workflow. Broader user-impact alerts, telemetry no-data policy, other repair
+  classes, and live fault/recovery demonstrations remain deferred and require
+  separate owner approval.

@@ -1,0 +1,198 @@
+name: Bounded Sudoku alert repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      incident_id:
+        description: Opaque, receiver-generated incident identifier
+        required: true
+        type: string
+      expires_at:
+        description: Receiver-issued UTC incident expiry
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sudoku-alert-repair-main
+  cancel-in-progress: false
+
+jobs:
+  authorization:
+    outputs:
+      run_id: ${{ steps.claim.outputs.run_id }}
+      run_attempt: ${{ steps.claim.outputs.run_attempt }}
+      incident_id: ${{ steps.claim.outputs.incident_id }}
+      expires_at: ${{ steps.claim.outputs.expires_at }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Claim receiver-accepted incident before candidate execution
+        id: claim
+        env:
+          ALERT_INCIDENT_ID: ${{ inputs.incident_id }}
+          ALERT_EXPIRES_AT: ${{ inputs.expires_at }}
+          ALERT_REPAIR_AUTH_URL: ${{ vars.ALERT_REPAIR_AUTH_URL }}
+          ALERT_REPAIR_ENABLED: ${{ vars.ALERT_REPAIR_ENABLED }}
+          REPAIR_COPILOT_OWNER_ENABLED: ${{ vars.REPAIR_COPILOT_OWNER_ENABLED }}
+          REPAIR_FREE_ENTITLEMENT_CONFIRMED: ${{ vars.REPAIR_FREE_ENTITLEMENT_CONFIRMED }}
+          REPAIR_QUOTA_CONFIRMED: ${{ vars.REPAIR_QUOTA_CONFIRMED }}
+          REPAIR_NO_OVERAGE_CONFIRMED: ${{ vars.REPAIR_NO_OVERAGE_CONFIRMED }}
+          REPAIR_PROVIDER_TRANSMISSION_APPROVED: ${{ vars.REPAIR_PROVIDER_TRANSMISSION_APPROVED }}
+        run: >-
+          python3 scripts/repair_runner.py authorize
+          --incident-id "$ALERT_INCIDENT_ID"
+          --expires-at "$ALERT_EXPIRES_AT"
+
+  candidate:
+    needs: authorization
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      copilot-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Copilot CLI
+        run: npm install --global @github/copilot@1.0.103
+      - name: Run existing coordinator in bounded candidate workspace
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ALERT_INCIDENT_ID: ${{ inputs.incident_id }}
+          ALERT_EXPIRES_AT: ${{ inputs.expires_at }}
+          ALERT_REPAIR_AUTHORIZED: ${{ needs.authorization.result == 'success' }}
+          ALERT_REPAIR_AUTH_RUN_ID: ${{ needs.authorization.outputs.run_id }}
+          ALERT_REPAIR_AUTH_RUN_ATTEMPT: ${{ needs.authorization.outputs.run_attempt }}
+          ALERT_REPAIR_AUTH_INCIDENT_ID: ${{ needs.authorization.outputs.incident_id }}
+          ALERT_REPAIR_AUTH_EXPIRES_AT: ${{ needs.authorization.outputs.expires_at }}
+          ALERT_REPAIR_ENABLED: ${{ vars.ALERT_REPAIR_ENABLED }}
+          REPAIR_COPILOT_OWNER_ENABLED: ${{ vars.REPAIR_COPILOT_OWNER_ENABLED }}
+          REPAIR_FREE_ENTITLEMENT_CONFIRMED: ${{ vars.REPAIR_FREE_ENTITLEMENT_CONFIRMED }}
+          REPAIR_QUOTA_CONFIRMED: ${{ vars.REPAIR_QUOTA_CONFIRMED }}
+          REPAIR_NO_OVERAGE_CONFIRMED: ${{ vars.REPAIR_NO_OVERAGE_CONFIRMED }}
+          REPAIR_PROVIDER_TRANSMISSION_APPROVED: ${{ vars.REPAIR_PROVIDER_TRANSMISSION_APPROVED }}
+        run: >-
+          python3 scripts/repair_runner.py run
+          --incident-id "$ALERT_INCIDENT_ID"
+          --expires-at "$ALERT_EXPIRES_AT"
+          --patch "$RUNNER_TEMP/candidate.patch"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sudoku-repair-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  verify:
+    needs: [authorization, candidate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Verify the one-time receiver claim before patch validation
+        env:
+          ALERT_REPAIR_AUTHORIZED: ${{ needs.authorization.result == 'success' }}
+          ALERT_REPAIR_AUTH_RUN_ID: ${{ needs.authorization.outputs.run_id }}
+          ALERT_REPAIR_AUTH_RUN_ATTEMPT: ${{ needs.authorization.outputs.run_attempt }}
+          ALERT_REPAIR_AUTH_INCIDENT_ID: ${{ needs.authorization.outputs.incident_id }}
+          ALERT_REPAIR_AUTH_EXPIRES_AT: ${{ needs.authorization.outputs.expires_at }}
+          ALERT_INCIDENT_ID: ${{ inputs.incident_id }}
+          ALERT_EXPIRES_AT: ${{ inputs.expires_at }}
+          ALERT_REPAIR_ENABLED: ${{ vars.ALERT_REPAIR_ENABLED }}
+          REPAIR_COPILOT_OWNER_ENABLED: ${{ vars.REPAIR_COPILOT_OWNER_ENABLED }}
+          REPAIR_FREE_ENTITLEMENT_CONFIRMED: ${{ vars.REPAIR_FREE_ENTITLEMENT_CONFIRMED }}
+          REPAIR_QUOTA_CONFIRMED: ${{ vars.REPAIR_QUOTA_CONFIRMED }}
+          REPAIR_NO_OVERAGE_CONFIRMED: ${{ vars.REPAIR_NO_OVERAGE_CONFIRMED }}
+          REPAIR_PROVIDER_TRANSMISSION_APPROVED: ${{ vars.REPAIR_PROVIDER_TRANSMISSION_APPROVED }}
+        run: >-
+          python3 scripts/repair_runner.py verify-authorization
+          --incident-id "$ALERT_INCIDENT_ID"
+          --expires-at "$ALERT_EXPIRES_AT"
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: sudoku-repair-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/repair-candidate
+      - name: Validate and apply candidate patch
+        run: >-
+          python3 scripts/repair_runner.py apply-patch
+          "$RUNNER_TEMP/repair-candidate/candidate.patch"
+      - name: Run configured local suite
+        run: sh scripts/test.sh
+
+  publish-pr:
+    needs: [authorization, verify]
+    if: >-
+      github.repository == 'sadevaraj/aidevtools_prj' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Verify receiver authorization before publication credentials
+        env:
+          ALERT_REPAIR_AUTHORIZED: ${{ needs.authorization.result == 'success' }}
+          ALERT_REPAIR_AUTH_RUN_ID: ${{ needs.authorization.outputs.run_id }}
+          ALERT_REPAIR_AUTH_RUN_ATTEMPT: ${{ needs.authorization.outputs.run_attempt }}
+          ALERT_REPAIR_AUTH_INCIDENT_ID: ${{ needs.authorization.outputs.incident_id }}
+          ALERT_REPAIR_AUTH_EXPIRES_AT: ${{ needs.authorization.outputs.expires_at }}
+          ALERT_INCIDENT_ID: ${{ inputs.incident_id }}
+          ALERT_EXPIRES_AT: ${{ inputs.expires_at }}
+          ALERT_REPAIR_ENABLED: ${{ vars.ALERT_REPAIR_ENABLED }}
+          REPAIR_COPILOT_OWNER_ENABLED: ${{ vars.REPAIR_COPILOT_OWNER_ENABLED }}
+          REPAIR_FREE_ENTITLEMENT_CONFIRMED: ${{ vars.REPAIR_FREE_ENTITLEMENT_CONFIRMED }}
+          REPAIR_QUOTA_CONFIRMED: ${{ vars.REPAIR_QUOTA_CONFIRMED }}
+          REPAIR_NO_OVERAGE_CONFIRMED: ${{ vars.REPAIR_NO_OVERAGE_CONFIRMED }}
+          REPAIR_PROVIDER_TRANSMISSION_APPROVED: ${{ vars.REPAIR_PROVIDER_TRANSMISSION_APPROVED }}
+        run: >-
+          python3 scripts/repair_runner.py verify-authorization
+          --incident-id "$ALERT_INCIDENT_ID"
+          --expires-at "$ALERT_EXPIRES_AT"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          token: ${{ secrets.ALERT_REPAIR_PR_TOKEN }}
+          persist-credentials: true
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: sudoku-repair-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/repair-candidate
+      - name: Publish only the validated and independently tested patch
+        env:
+          ALERT_REPAIR_PR_TOKEN: ${{ secrets.ALERT_REPAIR_PR_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ALERT_INCIDENT_ID: ${{ inputs.incident_id }}
+          ALERT_EXPIRES_AT: ${{ inputs.expires_at }}
+          ALERT_REPAIR_AUTHORIZED: ${{ needs.authorization.result == 'success' }}
+          ALERT_REPAIR_AUTH_RUN_ID: ${{ needs.authorization.outputs.run_id }}
+          ALERT_REPAIR_AUTH_RUN_ATTEMPT: ${{ needs.authorization.outputs.run_attempt }}
+          ALERT_REPAIR_AUTH_INCIDENT_ID: ${{ needs.authorization.outputs.incident_id }}
+          ALERT_REPAIR_AUTH_EXPIRES_AT: ${{ needs.authorization.outputs.expires_at }}
+          ALERT_REPAIR_ENABLED: ${{ vars.ALERT_REPAIR_ENABLED }}
+          REPAIR_COPILOT_OWNER_ENABLED: ${{ vars.REPAIR_COPILOT_OWNER_ENABLED }}
+          REPAIR_FREE_ENTITLEMENT_CONFIRMED: ${{ vars.REPAIR_FREE_ENTITLEMENT_CONFIRMED }}
+          REPAIR_QUOTA_CONFIRMED: ${{ vars.REPAIR_QUOTA_CONFIRMED }}
+          REPAIR_NO_OVERAGE_CONFIRMED: ${{ vars.REPAIR_NO_OVERAGE_CONFIRMED }}
+          REPAIR_PROVIDER_TRANSMISSION_APPROVED: ${{ vars.REPAIR_PROVIDER_TRANSMISSION_APPROVED }}
+        run: >-
+          python3 scripts/repair_runner.py publish-pr
+          --incident-id "$ALERT_INCIDENT_ID"
+          --expires-at "$ALERT_EXPIRES_AT"
+          --patch "$RUNNER_TEMP/repair-candidate/candidate.patch"

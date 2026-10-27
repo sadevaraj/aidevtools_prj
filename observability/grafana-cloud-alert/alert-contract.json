@@ -1,0 +1,12 @@
+{
+  "expression": "sum(increase(sudoku_save_requests_total{outcome=\"server_error\"}[5m])) > 0",
+  "labels": {
+    "operation": "save_game",
+    "service": "sudoku-api",
+    "severity": "warning"
+  },
+  "annotations": {
+    "summary": "Sudoku game saves returned an HTTP 5xx response.",
+    "description": "At least one manual save returned HTTP 5xx during the rolling five-minute window."
+  }
+}

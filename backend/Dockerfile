@@ -20,8 +20,12 @@ COPY backend/requirements-test.txt ./requirements-test.txt
 RUN pip install --no-cache-dir --requirement requirements-test.txt
 COPY backend/tests ./tests
 COPY backend/pytest.ini ./pytest.ini
+COPY observability/grafana-cloud-alert /observability/grafana-cloud-alert
 COPY scripts/test.sh ./scripts/test.sh
 COPY scripts/pipeline.py ./scripts/pipeline.py
+COPY scripts/repair_runner.py ./scripts/repair_runner.py
 COPY .github/workflows/pipeline.yml ./.github/workflows/pipeline.yml
+COPY .github/workflows/repair.yml ./.github/workflows/repair.yml
+COPY .github/agents ./.github/agents
 
 FROM runtime AS production

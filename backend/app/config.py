@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     cookie_secure: bool | None = Field(default=None, validation_alias="COOKIE_SECURE")
     session_secret: SecretStr = Field(validation_alias="SESSION_SECRET")
     login_rate_limit: str = Field(default="5/minute", validation_alias="LOGIN_RATE_LIMIT")
+    alert_repair_enabled: bool = Field(default=False, validation_alias="ALERT_REPAIR_ENABLED")
+    alert_receiver_token: SecretStr | None = Field(
+        default=None, validation_alias="ALERT_RECEIVER_TOKEN"
+    )
+    alert_dispatch_token: SecretStr | None = Field(
+        default=None, validation_alias="ALERT_DISPATCH_TOKEN"
+    )
 
     @property
     def secure_cookies(self) -> bool:

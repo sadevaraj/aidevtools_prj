@@ -1,9 +1,11 @@
 """Simple Sudoku API with database-backed accounts and games."""
 
 import hashlib
+import logging
 import secrets
 import re
-from typing import Annotated
+import json
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -24,9 +26,21 @@ from app.database import get_db
 from app.models import AuthSession, Game, Player, Puzzle
 from app.sudoku import is_complete, is_valid_solution, preserves_clues, validate_board
 from app.telemetry import instrument_app, tracer
+from app.alerting import (
+    IncidentAuthorizationError,
+    InvalidWorkflowIdentity,
+    MAX_BODY_BYTES,
+    InvalidAlert,
+    accept_incident,
+    alert_lifespan,
+    authorize_incident,
+    validate_payload,
+    verify_github_oidc_token,
+)
 
 settings = load_settings()
-app = FastAPI(title="Simple Sudoku API", version="1.0.0")
+app = FastAPI(title="Simple Sudoku API", version="1.0.0", lifespan=alert_lifespan)
+logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -77,7 +91,16 @@ def _csrf_valid(request: Request) -> bool:
 
 @app.middleware("http")
 async def csrf_protection(request: Request, call_next):
-    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path.startswith("/api/"):
+    alert_routes = {
+        "/api/alerts/grafana",
+        "/api/alerts/repair/claim",
+    }
+    alert_route = request.method == "POST" and request.url.path in alert_routes
+    if (
+        request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and request.url.path.startswith("/api/")
+        and not alert_route
+    ):
         if not _csrf_valid(request):
             return JSONResponse({"detail": "CSRF validation failed."}, status_code=403)
     return await call_next(request)
@@ -174,6 +197,116 @@ def _owned_game(db: Session, game_id: int, player_id: int, *, lock: bool = False
 def health(db: DatabaseDependency):
     db.execute(text("SELECT 1"))
     return {"status": "ok"}
+
+
+@app.post("/api/alerts/grafana", status_code=202)
+@limiter.limit("20/minute")
+async def receive_grafana_alert(request: Request, db: DatabaseDependency):
+    """Durably accept one supported development save-5xx firing notification."""
+    if not settings.alert_repair_enabled or settings.app_env != "development":
+        raise HTTPException(status_code=404, detail="Alert receiver is unavailable.")
+    if settings.alert_receiver_token is None or settings.alert_dispatch_token is None:
+        raise HTTPException(status_code=503, detail="Alert receiver is not configured.")
+    authorization = request.headers.get("authorization", "")
+    expected = f"Bearer {settings.alert_receiver_token.get_secret_value()}"
+    if not secrets.compare_digest(authorization, expected):
+        raise HTTPException(status_code=401, detail="Alert authentication failed.")
+    length = request.headers.get("content-length")
+    if length is not None:
+        try:
+            if int(length) < 0 or int(length) > MAX_BODY_BYTES:
+                raise HTTPException(status_code=413, detail="Alert payload is too large.")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid alert request.") from None
+    chunks = bytearray()
+    async for chunk in request.stream():
+        if len(chunks) + len(chunk) > MAX_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="Alert payload is too large.")
+        chunks.extend(chunk)
+    try:
+        payload = json.loads(chunks)
+        incident_id = validate_payload(payload, development=True)
+    except (json.JSONDecodeError, UnicodeDecodeError, InvalidAlert):
+        raise HTTPException(status_code=422, detail="Unsupported alert payload.") from None
+    try:
+        created = accept_incident(db, incident_id)
+    except OverflowError:
+        raise HTTPException(status_code=429, detail="Alert intake limit reached.") from None
+    except Exception as error:
+        db.rollback()
+        # Type only: DB diagnostics can contain parameters and sensitive state.
+        import logging
+        logging.getLogger(__name__).warning(
+            "Alert intake failed (%s).", type(error).__name__
+        )
+        raise HTTPException(status_code=503, detail="Alert could not be durably accepted.") from None
+    return {"accepted": True, "duplicate": not created}
+
+
+class RepairClaimRequest(RequestBody):
+    incident_id: str
+    expires_at: str
+    action: Literal["claim", "verify"]
+
+
+@app.post("/api/alerts/repair/claim")
+@limiter.limit("10/minute")
+async def claim_repair_execution(
+    request: Request,
+    db: DatabaseDependency,
+):
+    """Authorize one workflow attempt for one durable, unexpired incident."""
+    if not settings.alert_repair_enabled or settings.app_env != "development":
+        raise HTTPException(status_code=404, detail="Repair authorization is unavailable.")
+    if settings.alert_dispatch_token is None:
+        raise HTTPException(status_code=503, detail="Repair authorization is not configured.")
+    length = request.headers.get("content-length")
+    if length is not None:
+        try:
+            if int(length) < 0 or int(length) > 1024:
+                raise HTTPException(status_code=413, detail="Authorization request is too large.")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid authorization request.") from None
+    chunks = bytearray()
+    async for chunk in request.stream():
+        if len(chunks) + len(chunk) > 1024:
+            raise HTTPException(status_code=413, detail="Authorization request is too large.")
+        chunks.extend(chunk)
+    try:
+        body = RepairClaimRequest.model_validate_json(chunks)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Invalid authorization request.") from None
+    authorization = request.headers.get("authorization", "")
+    scheme, separator, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not separator or not token:
+        raise HTTPException(status_code=401, detail="Workflow authentication failed.")
+    try:
+        workflow_run = verify_github_oidc_token(token)
+    except InvalidWorkflowIdentity:
+        raise HTTPException(status_code=401, detail="Workflow authentication failed.") from None
+    try:
+        expiry = authorize_incident(
+            db,
+            body.incident_id,
+            workflow_run,
+            expected_expires_at=body.expires_at,
+            claim=body.action == "claim",
+        )
+        db.commit()
+    except IncidentAuthorizationError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Incident authorization was rejected.") from None
+    except Exception:
+        db.rollback()
+        logger.warning("Repair authorization persistence failed.")
+        raise HTTPException(status_code=503, detail="Repair authorization is unavailable.") from None
+    return {
+        "authorized": True,
+        "expires_at": expiry.isoformat(),
+        "incident_id": body.incident_id,
+        "run_id": str(workflow_run.run_id),
+        "run_attempt": str(workflow_run.run_attempt),
+    }
 
 
 @app.get("/api/auth/csrf")

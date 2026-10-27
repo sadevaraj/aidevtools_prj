@@ -2,6 +2,11 @@
 
 import copy
 import hashlib
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -197,6 +202,94 @@ def test_puzzle_list_game_start_save_and_resume_are_persisted_and_owned():
     assert owner.put(
         f"/api/games/{game['id']}", json={"board": changed_clue}, headers={"X-CSRF-Token": token}
     ).status_code == 422
+
+
+def test_deliberate_save_typo_reproduces_500_and_repaired_save_persists(tmp_path):
+    """Reproduce in a temporary backend source checkout; never break app.main."""
+    source = Path(api_module.__file__).read_text(encoding="utf-8")
+    correct_line = "game.board = _validated_board(body.board, puzzle.clues)"
+    assert source.count(correct_line) == 1
+    broken_source = source.replace(
+        correct_line,
+        "game.board = _validated_board(body.borad, puzzle.clues)",
+        1,
+    )
+    checkout = tmp_path / "checkout"
+    shutil.copytree(
+        Path(api_module.__file__).parent,
+        checkout / "app",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    isolated_main = checkout / "app" / "main.py"
+    isolated_main.write_text(broken_source, encoding="utf-8")
+    probe = """
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app, raise_server_exceptions=False) as client:
+    token = client.get("/api/auth/csrf").json()["csrfToken"]
+    response = client.post(
+        "/api/auth/register",
+        json={"username": "TypoTest", "password": "Password1"},
+        headers={"X-CSRF-Token": token},
+    )
+    assert response.status_code == 201
+    token = client.cookies["sudoku_csrf"]
+    headers = {"X-CSRF-Token": token}
+    game = client.post("/api/games/1", headers=headers).json()
+    board = [row[:] for row in game["board"]]
+    cell = next((r, c) for r in range(9) for c in range(9) if board[r][c] is None)
+    board[cell[0]][cell[1]] = 4
+    failed = client.put(
+        f"/api/games/{game['id']}", json={"board": board}, headers=headers
+    )
+    assert failed.status_code == 500
+    print(game["id"])
+"""
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(checkout)
+    environment["OTEL_ENABLED"] = "false"
+    reproduced = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=checkout,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert reproduced.returncode == 0, "isolated HTTP 500 reproduction failed"
+    game_id = int(reproduced.stdout.strip())
+    with SessionLocal() as db:
+        persisted = db.get(Game, game_id)
+        assert persisted.board == PUZZLES[0]["clues"]
+        assert persisted.last_saved_at is None
+
+    # The unmodified application represents the corrected body.board handler.
+    repaired, token = client_with_csrf()
+    login = repaired.post(
+        "/api/auth/login",
+        json={"username": "TypoTest", "password": "Password1"},
+        headers={"X-CSRF-Token": token},
+    )
+    assert login.status_code == 200
+    token = repaired.cookies["sudoku_csrf"]
+    game = repaired.get(f"/api/games/{game_id}").json()
+    board = copy.deepcopy(game["board"])
+    row, column = next(
+        (r, c) for r in range(9) for c in range(9) if board[r][c] is None
+    )
+    board[row][column] = PUZZLES[0]["solution"][row][column]
+    saved = repaired.put(
+        f"/api/games/{game_id}",
+        json={"board": board},
+        headers={"X-CSRF-Token": token},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["board"] == board
+    with SessionLocal() as db:
+        persisted = db.get(Game, game_id)
+        assert persisted.board == board
+        assert persisted.last_saved_at is not None
 
 
 def test_concurrent_start_returns_one_persisted_game():
