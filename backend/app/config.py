@@ -145,7 +145,7 @@ def load_settings() -> Settings:
                 "Invalid configuration: DATABASE_URL must be set to a valid "
                 "PostgreSQL connection URL in production."
             )
-    elif any(
+    elif settings.database_url is None and any(
         value is None
         for value in (
             settings.database_host,

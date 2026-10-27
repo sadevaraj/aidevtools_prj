@@ -86,16 +86,19 @@ def test_receiver_requires_auth_and_rejects_invalid_or_oversized_payloads(config
     client = configured_receiver
     assert send(client, alert_payload(), token="wrong").status_code == 401
     assert send(client, {"status": "error", "alerts": []}).status_code == 422
+    no_data = alert_payload()
+    no_data["status"] = "no_data"
+    assert send(client, no_data).status_code == 422
     assert send(
         client,
         alert_payload(status="resolved"),
     ).status_code == 422
+    assert send(client, alert_payload(status="error")).status_code == 422
+    assert send(client, alert_payload(status="no_data")).status_code == 422
     assert send(
         client,
         alert_payload(labels={"alertname": "Query error"}),
     ).status_code == 422
-    assert send(client, alert_payload(values={"A": 0})).status_code == 422
-    assert send(client, alert_payload(values={"A": "NoData"})).status_code == 422
     assert send(
         client,
         alert_payload(fingerprint="not-a-fingerprint"),
@@ -109,6 +112,46 @@ def test_receiver_requires_auth_and_rejects_invalid_or_oversized_payloads(config
         },
     )
     assert huge.status_code == 413
+    with SessionLocal() as db:
+        assert db.scalar(select(AlertIncident.id)) is None
+
+
+def test_receiver_accepts_additional_finite_numeric_expression_values(configured_receiver):
+    payload = alert_payload(values={"A": 1.5, "B": 0, "threshold": 0.75})
+    response = send(configured_receiver, payload)
+
+    assert response.status_code == 202
+    assert response.json() == {"accepted": True, "duplicate": False}
+    with SessionLocal() as db:
+        rows = db.scalars(select(AlertIncident)).all()
+        assert len(rows) == 1
+        assert rows[0].id != payload["alerts"][0]["fingerprint"]
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {},
+        {"B": 1},
+        {"A": 0},
+        {"A": -1},
+        {"A": True},
+        {"A": "1"},
+        {"A": float("nan")},
+        {"A": float("inf")},
+        {"A": 1, "B": False},
+        {"A": 1, "B": "NoData"},
+        {"A": 1, "B": float("nan")},
+        {"A": 1, "B": float("-inf")},
+        {"A": 1, "B": {"value": 2}},
+    ],
+)
+def test_receiver_rejects_missing_or_malformed_expression_values(
+    configured_receiver, values
+):
+    response = send(configured_receiver, alert_payload(values=values))
+
+    assert response.status_code == 422
     with SessionLocal() as db:
         assert db.scalar(select(AlertIncident.id)) is None
 

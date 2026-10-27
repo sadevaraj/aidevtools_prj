@@ -74,6 +74,15 @@ and validates/idempotently seeds exactly three puzzles before Uvicorn starts.
 The API health check verifies a database query. Migration or seed failure stops
 backend startup rather than reporting ready.
 
+With `APP_ENV=development`, the backend can use an existing valid PostgreSQL
+`DATABASE_URL` without the split `DATABASE_HOST`, `DATABASE_PORT`,
+`DATABASE_NAME`, `DATABASE_USER`, and `DATABASE_PASSWORD` settings. The
+backend's shared database engine uses that URL for startup, health checks, and
+Alembic migrations. The Compose stack above continues to use split settings.
+For an HTTPS development endpoint, set `COOKIE_SECURE=true` explicitly;
+production still requires a valid `DATABASE_URL` and defaults to Secure
+cookies.
+
 ## Run production images locally
 
 This separate smoke stack builds and runs the production frontend/backend image
@@ -305,6 +314,14 @@ to the backend's exact claim endpoint before enabling Actions; the disabled
 workflow fails closed if it is absent or does not match the durable incident.
 Candidate changes are restricted to the approved save-handler typo correction
 and regression test; merge and deployment remain human-controlled.
+
+These configuration capabilities do not authorize enabling the receiver or
+workflow. Keep the receiver disabled and Actions workflow disabled until the
+owner has separately configured and verified the issue #18 Grafana notification
+path, all receiver/dispatch authentication and HTTPS endpoint settings, and the
+Copilot entitlement, quota, no-overage, and provider-approval gates. Any remote
+development deployment or demonstration must also wait for issues #12 and #13;
+those remain separate dependencies and are not verified here.
 
 The deliberate `body.borad` failure is a **temporary isolated test fixture**,
 not an observed existing defect. Broken source is never committed, and no

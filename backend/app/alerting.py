@@ -228,11 +228,23 @@ def validate_payload(payload: object, *, development: bool) -> str:
     ):
         raise InvalidAlert
     values = alert.get("values")
-    evaluated = values.get("A") if isinstance(values, dict) and set(values) == {"A"} else None
+    if not isinstance(values, dict) or any(
+        not isinstance(name, str)
+        or not name.strip()
+        or len(name) > 128
+        or not (
+            type(value) is int
+            or (type(value) is float and math.isfinite(value))
+        )
+        for name, value in values.items()
+    ):
+        raise InvalidAlert
+    evaluated = values.get("A")
     if (
-        isinstance(evaluated, bool)
-        or not isinstance(evaluated, (int, float))
-        or not math.isfinite(evaluated)
+        not (
+            type(evaluated) is int
+            or (type(evaluated) is float and math.isfinite(evaluated))
+        )
         or evaluated <= 0
     ):
         # Error/no-data rule states do not carry the one positive save-error

@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from app.config import load_settings
+from sqlalchemy.engine import URL
 
 
 class SettingsTests(unittest.TestCase):
@@ -31,9 +32,41 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.database_user, "sudoku")
         self.assertNotIn(env["DATABASE_PASSWORD"], repr(settings))
 
+    def test_development_database_url_works_without_split_settings(self) -> None:
+        database_password = secrets.token_urlsafe(24)
+        env = {
+            "APP_ENV": "development",
+            "DATABASE_URL": URL.create(
+                "postgresql",
+                username="url-user",
+                password=database_password,
+                host="url-db.example.test",
+                database="url_database",
+            ).render_as_string(hide_password=False),
+            "SESSION_SECRET": secrets.token_hex(32),
+        }
+        with patch.dict(os.environ, env, clear=True):
+            settings = load_settings()
+            from app.database import database_url_for_settings
+
+            database_url = database_url_for_settings(settings)
+
+        self.assertIsNotNone(settings.database_url)
+        self.assertEqual(database_url.drivername, "postgresql+psycopg")
+        self.assertEqual(database_url.host, "url-db.example.test")
+        self.assertEqual(database_url.database, "url_database")
+        self.assertNotIn(database_password, repr(settings))
+        self.assertNotIn(
+            database_password, database_url.render_as_string(hide_password=True)
+        )
+
     def test_production_requires_database_url_and_accepts_render_url(self) -> None:
         env = self.valid_env()
         env["APP_ENV"] = "production"
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "DATABASE_URL must be set"):
+                load_settings()
+
         for key in ("DATABASE_HOST", "DATABASE_PORT", "DATABASE_NAME", "DATABASE_USER", "DATABASE_PASSWORD"):
             del env[key]
         with patch.dict(os.environ, env, clear=True):
@@ -46,6 +79,20 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.app_env, "production")
         self.assertEqual(settings.port, 8000)
         self.assertTrue(settings.secure_cookies)
+
+    def test_invalid_development_database_url_is_rejected_without_leaking_value(self) -> None:
+        private_password = secrets.token_urlsafe(24)
+        env = {
+            "APP_ENV": "development",
+            "DATABASE_URL": f"postgresql://url-user:{private_password}@localhost",
+            "SESSION_SECRET": secrets.token_hex(32),
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(RuntimeError) as raised:
+                load_settings()
+        self.assertIn("DATABASE_URL", str(raised.exception))
+        self.assertNotIn(env["DATABASE_URL"], str(raised.exception))
+        self.assertNotIn(private_password, str(raised.exception))
 
     def test_invalid_database_url_diagnostic_does_not_leak_value(self) -> None:
         env = self.valid_env()

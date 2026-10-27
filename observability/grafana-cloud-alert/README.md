@@ -22,6 +22,20 @@ player identifier, board/request content, credential, cookie, session/CSRF
 value, raw header, or trace ID is added by this configuration. Grafana may add
 its own alert-state and rule metadata.
 
+Grafana's notification template reference describes `Alert.Values` as the
+expression values used to evaluate a condition; query/condition rules may use
+additional expressions. Accordingly, the issue #19 development receiver
+requires `A` to be a positive finite JSON number and accepts other expression
+entries only when each has a non-empty bounded name and a finite numeric value.
+Additional values cannot replace `A` or relax the receiver's expected firing
+status, alert name, labels, single-alert, fingerprint, authentication, or replay
+checks. Error/no-data statuses and malformed or non-numeric expression values
+are rejected. This is based on Grafana's published payload documentation, not
+on a captured live notification payload; no live delivery is claimed.
+
+- [Grafana notification template reference](https://grafana.com/docs/grafana/latest/alerting/configure-notifications/template-notifications/reference/#alert)
+- [Grafana alert queries and conditions](https://grafana.com/docs/grafana/latest/alerting/fundamentals/alert-rules/queries-conditions/)
+
 ## Owner-operated setup
 
 No live Grafana or webhook configuration is included here. When the owner
