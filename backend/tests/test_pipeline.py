@@ -160,9 +160,9 @@ class PipelineTests(unittest.TestCase):
         self.assert_blocked()
         self.assertEqual(len(self.client.calls), 2)
 
-    def test_service_runtime_autodeploy_and_identity_rejected(self):
+    def test_service_identity_and_image_rejected(self):
         for field, value in (("name", "kanban-backend"), ("type", "private_service"),
-                             ("autoDeploy", "yes"), ("id", "srv-wrong"),
+                             ("id", "srv-wrong"),
                              ("imagePath", "ghcr.io/other/kanban:latest")):
             with self.subTest(field=field):
                 self.client = FakeRender()
@@ -174,12 +174,18 @@ class PipelineTests(unittest.TestCase):
                 self.client.request = changed
                 self.assert_blocked()
 
-    def assert_preflight_diagnostic(self, role, field, expected, value=None, missing=False):
+    def assert_preflight_diagnostic(self, role, field, expected, value=None, missing=False,
+                                    auto_deploy="no"):
         self.client = FakeRender()
         original = self.client.request
 
         def changed(path, body=None):
             result = original(path, body)
+            if "/deploys" not in path:
+                if auto_deploy is None:
+                    del result["autoDeploy"]
+                else:
+                    result["autoDeploy"] = auto_deploy
             if path == f"/services/srv-{role}":
                 container = result
                 keys = field.split(".")
@@ -221,7 +227,6 @@ class PipelineTests(unittest.TestCase):
                 "serviceDetails": "object",
                 "serviceDetails.url": pipeline.ORIGINS[role],
                 "serviceDetails.runtime": "image",
-                "autoDeploy": "no",
                 "imagePath": f"{pipeline.REGISTRY}{role}:<tag> or "
                              f"{pipeline.REGISTRY}{role}@sha256:<64 lowercase hex digits>",
             }
@@ -239,8 +244,10 @@ class PipelineTests(unittest.TestCase):
                             f"CD BLOCKED: {role} service {diagnostic_field} "
                             f"{'missing' if missing else 'invalid'}; expected {expectation}."
                         )
-                        self.assert_preflight_diagnostic(
-                            role, field, expected, value, missing)
+                        for auto_deploy in (None, "yes", "no"):
+                            with self.subTest(auto_deploy=auto_deploy):
+                                self.assert_preflight_diagnostic(
+                                    role, field, expected, value, missing, auto_deploy)
 
     def test_preflight_runtime_fallback_and_precedence_unchanged(self):
         for role in ("backend", "frontend"):
@@ -278,11 +285,9 @@ class PipelineTests(unittest.TestCase):
                         self.assertFalse(any(isinstance(body, dict)
                                              for _, body in self.client.calls))
 
-    def test_preflight_image_and_autodeploy_checks_remain_strict(self):
+    def test_preflight_image_checks_remain_strict(self):
         for role in ("backend", "frontend"):
             for field, expectation, values in (
-                ("autoDeploy", "no", ("yes", "off", False, 0, "NO",
-                                     {"autoDeployTrigger": "off"})),
                 ("imagePath", f"{pipeline.REGISTRY}{role}:<tag> or "
                               f"{pipeline.REGISTRY}{role}@sha256:<64 lowercase hex digits>",
                  (f"{pipeline.REGISTRY}{role}", f"{pipeline.REGISTRY}{role}:",
@@ -296,21 +301,67 @@ class PipelineTests(unittest.TestCase):
                             role, field,
                             f"CD BLOCKED: {role} service {field} invalid; expected {expectation}.",
                             value)
-        # A newer SDK field alone is not evidence that the required legacy
-        # response field is present/disabled. No schema compatibility is inferred.
-        self.client = FakeRender()
-        original = self.client.request
 
-        def trigger_only(path, body=None):
-            result = original(path, body)
-            result.pop("autoDeploy", None)
-            result["autoDeployTrigger"] = "off"
-            return result
+    def test_generic_autodeploy_metadata_is_not_an_image_runtime_gate(self):
+        # None here means the generic field is absent. Exercise both services
+        # independently, including mixed metadata, and the complete deploy flow.
+        for backend in (None, "yes", "no"):
+            for frontend in (None, "yes", "no"):
+                with self.subTest(backend=backend, frontend=frontend):
+                    self.client = FakeRender()
+                    original = self.client.request
 
-        self.client.request = trigger_only
-        with self.assertRaisesRegex(pipeline.PipelineError, "autoDeploy missing; expected no"):
-            self.run_deploy()
-        self.assertFalse(any(isinstance(body, dict) for _, body in self.client.calls))
+                    def changed(path, body=None):
+                        result = original(path, body)
+                        if "/deploys" not in path:
+                            value = backend if "srv-backend" in path else frontend
+                            if value is None:
+                                del result["autoDeploy"]
+                            else:
+                                result["autoDeploy"] = value
+                        return result
+
+                    self.client.request = changed
+                    self.assertEqual(self.run_deploy()["status"], "verified")
+                    self.assertEqual(self.client.calls[:2], [
+                        (f"/services/srv-{role}", None) for role in ("backend", "frontend")
+                    ])
+                    self.assertEqual(
+                        [(path, body) for path, body in self.client.calls
+                         if isinstance(body, dict)],
+                        [(f"/services/srv-{role}/deploys",
+                          {"imageUrl": f"{pipeline.REGISTRY}{role}@{DIGESTS[role]}"})
+                         for role in ("backend", "frontend")])
+
+    def test_runtime_still_blocks_before_any_post_with_generic_autodeploy_metadata(self):
+        for role in ("backend", "frontend"):
+            for auto_deploy in (None, "yes", "no"):
+                for runtime in ({}, {"runtime": "docker"}, {"runtime": None},
+                                {"runtime": []}, {"runtime": "invalid"},
+                                {"runtime": None, "env": "image"}, {"env": "docker"}):
+                    with self.subTest(role=role, auto_deploy=auto_deploy, runtime=runtime):
+                        self.client = FakeRender()
+                        original = self.client.request
+
+                        def changed(path, body=None):
+                            result = original(path, body)
+                            if "/deploys" not in path:
+                                if auto_deploy is None:
+                                    del result["autoDeploy"]
+                                else:
+                                    result["autoDeploy"] = auto_deploy
+                                if path == f"/services/srv-{role}":
+                                    result["serviceDetails"].pop("runtime")
+                                    result["serviceDetails"].update(runtime)
+                            return result
+
+                        self.client.request = changed
+                        self.assert_blocked()
+                        self.assertEqual(json.loads(self.report.read_text())["services"], {})
+                        self.assertEqual(self.client.calls, [
+                            (f"/services/srv-{name}", None) for name in
+                            (("backend",) if role == "backend" else ("backend", "frontend"))
+                        ])
 
     def test_preflight_accepts_existing_tag_and_digest_image_formats(self):
         for suffix in (":release_1.2-3", "@sha256:" + "d" * 64):

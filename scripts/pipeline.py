@@ -124,7 +124,7 @@ def deployment_config(env):
 
 
 def preflight(client, ids):
-    # Check BOTH before mutating either. Fixed URLs prevent targeting Kanban/prod.
+    # Check BOTH before mutating either. Fixed URLs allow only Sudoku development targets.
     for role, service_id in ids.items():
         service = client.request(f"/services/{service_id}")
 
@@ -151,7 +151,9 @@ def preflight(client, ids):
         runtime_field = (f"serviceDetails.{runtime_key}" if runtime_key in details else
                          "serviceDetails.runtime (fallback serviceDetails.env)")
         check(details, runtime_key, runtime_field, "image", lambda v: v == "image")
-        check(service, "autoDeploy", "autoDeploy", "no", lambda v: v == "no")
+        # Render image-backed services do not redeploy on registry tag changes.
+        # After verifying image runtime, generic autoDeploy metadata is not a gate:
+        # https://render.com/docs/deploying-an-image
         check(service, "imagePath", "imagePath",
               f"{REGISTRY}{role}:<tag> or {REGISTRY}{role}@sha256:<64 lowercase hex digits>",
               lambda v: isinstance(v, str) and re.fullmatch(

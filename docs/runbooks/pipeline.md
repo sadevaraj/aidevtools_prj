@@ -92,8 +92,11 @@ both IDs against Render metadata **before either POST**, requiring:
 | Backend | `simple-sudoku-backend` | `https://simple-sudoku-backend.onrender.com` | `ghcr.io/sadevaraj/simple-sudoku-backend` |
 | Frontend | `simple-sudoku-frontend` | `https://simple-sudoku-frontend.onrender.com` | `ghcr.io/sadevaraj/simple-sudoku-frontend` |
 
-Both must be image-backed Web Services with Render auto-deploy disabled
-(`autoDeploy: no`). A metadata/name/URL/image mismatch blocks deployment; request
+Both must be verified image-backed Web Services (`runtime: image`, with `env`
+checked only if `runtime` is absent). After that verification, generic
+`autoDeploy` metadata (including missing, `yes`, or `no`) is not a deployment
+gate: Render image-backed services do not automatically redeploy on registry
+tag changes. A required identity/runtime/URL/image mismatch blocks deployment; request
 an explicit corrected target decision rather than relaxing these checks.
 Do not use Kanban/production IDs. Render API keys may have broader access than
 the helper: the owner must check available key/workspace permissions and keep
@@ -114,7 +117,7 @@ Official references checked for this implementation:
   `GET /v1/services/<service-id>/deploys/<deploy-id>` returns status and
   `image.sha` (the resolved digest).
 - [Retrieve service](https://api-docs.render.com/reference/retrieve-service):
-  service identity, `imagePath`, auto-deploy setting and runtime/URL preflight.
+  service identity, `imagePath` and runtime/URL preflight.
 - [Deploying an image](https://render.com/docs/deploying-an-image):
   image-backed services do not follow a changed registry tag automatically.
 
@@ -182,7 +185,7 @@ and the expected safe value. For example:
 
 ```text
 CD BLOCKED: backend service serviceDetails.runtime invalid; expected image.
-CD BLOCKED: frontend service autoDeploy missing; expected no.
+CD BLOCKED: frontend service serviceDetails.url missing; expected https://simple-sudoku-frontend.onrender.com.
 ```
 
 Only code-defined field names and safe expectations are reported. Rejected
@@ -196,24 +199,27 @@ not be printed or attached to issues. Diagnose the precise field in the error:
 | `serviceDetails` | Must be an object; a missing/invalid container blocks inspection of its children. |
 | `serviceDetails.url` | Must be the role's exact fixed public Sudoku URL listed above. |
 | `serviceDetails.runtime` / `serviceDetails.env` | Must be `image`. The existing fallback checks `env` only when `runtime` is absent, not when it is null or invalid. The diagnostic names the selected key, or both keys if neither is present. |
-| `autoDeploy` | The current preflight requires the response field to be exactly the string `no`; missing, null, or other values block. |
+| `autoDeploy` | Not a gate after image runtime is verified; missing, `yes`, or `no` generic metadata does not block. It cannot establish image runtime or bypass any identity, URL or image check. |
 | `imagePath` | Must be the role's exact GHCR repository with a valid tag or lowercase SHA-256 digest; no other repository or malformed reference is accepted. |
 
 Render's official [image deployment documentation](https://render.com/docs/deploying-an-image)
 says image-backed services do not automatically redeploy when a registry tag
-changes, and documents the **Manual Deploy** control. Seeing that button alone
-is **not evidence** that the API returns `autoDeploy: no`. The generic SDK's
-`autoDeploy` field is deprecated in favor of `autoDeployTrigger`, but that does
-not establish the actual response shape for these image-backed services.
-This fix neither removes the `autoDeploy` safeguard nor treats the newer field
-as compatible evidence.
+changes, and documents **Manual Deploy → Deploy latest reference**. Therefore,
+after verifying image runtime, the helper does not require the generic
+`autoDeploy` field to be present or equal `no`, nor infer compatibility from
+`autoDeployTrigger`. Missing, invalid, or non-image runtime still blocks before
+any POST, as do all required identity, name, URL, and image mismatches. Both
+services must pass; a frontend mismatch also prevents the backend POST.
+This correction is covered by the
+[agent-recorded human approval dated 2026-10-27](https://github.com/sadevaraj/aidevtools_prj/issues/12#issuecomment-6435099044).
 
 Do not blindly retry the job or change settings/targets to silence an error.
 Keep CD disabled while the precise mismatch is unresolved. If provider schema
 compatibility is suspected, request a separately authorized, sanitized
 field-presence/type investigation and an explicit compatibility decision before
 changing validation. Do not fetch or dump authenticated metadata as part of
-ordinary troubleshooting. Missing metadata is not proof of disabled auto-deploy.
+ordinary troubleshooting. Missing required runtime metadata is not proof of
+image-backed service behavior.
 After a reviewed fix, obtain authorization before any new workflow/deploy run;
 local diagnostic tests are not deployment verification.
 
