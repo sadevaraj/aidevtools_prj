@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func, Index, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint, func, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -79,3 +79,73 @@ class AlertIncident(Base):
     execution_run_id: Mapped[int | None] = mapped_column(BigInteger)
     execution_run_attempt: Mapped[int | None] = mapped_column(Integer)
     execution_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    demo_authorization_id: Mapped[str | None] = mapped_column(
+        ForeignKey("development_demo_authorizations.id", ondelete="RESTRICT"),
+        unique=True,
+    )
+
+
+class DevelopmentDemoAuthorization(Base):
+    """Single-use, owner-armed save-recovery demonstration authorization."""
+
+    __tablename__ = "development_demo_authorizations"
+    __table_args__ = (
+        CheckConstraint(
+            "trusted_revision ~ '^[0-9a-f]{40}$' AND "
+            "fault_revision ~ '^[0-9a-f]{40}$' AND "
+            "expected_repaired_tree ~ '^[0-9a-f]{40}$'",
+            name="ck_demo_authorization_revisions",
+        ),
+        CheckConstraint(
+            "backend_digest ~ '^sha256:[0-9a-f]{64}$' AND "
+            "frontend_digest ~ '^sha256:[0-9a-f]{64}$' AND "
+            "rollback_backend_digest ~ '^sha256:[0-9a-f]{64}$' AND "
+            "rollback_frontend_digest ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_demo_authorization_digests",
+        ),
+        CheckConstraint(
+            "backend_target = 'https://simple-sudoku-backend.onrender.com' AND "
+            "frontend_target = 'https://simple-sudoku-frontend.onrender.com'",
+            name="ck_demo_authorization_targets",
+        ),
+        CheckConstraint(
+            "branch = 'demo/save-recovery'",
+            name="ck_demo_authorization_branch",
+        ),
+        CheckConstraint(
+            "trusted_revision <> fault_revision AND "
+            "backend_digest <> rollback_backend_digest AND "
+            "frontend_digest <> rollback_frontend_digest",
+            name="ck_demo_authorization_distinct",
+        ),
+        CheckConstraint(
+            "state IN ('armed', 'claimed', 'revoked', 'expired')",
+            name="ck_demo_authorization_state",
+        ),
+        CheckConstraint(
+            "(claimed_run_id IS NULL AND claimed_run_attempt IS NULL AND claimed_at IS NULL) OR "
+            "(claimed_run_id > 0 AND claimed_run_attempt > 0 AND claimed_at IS NOT NULL)",
+            name="ck_demo_authorization_claim",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    trusted_revision: Mapped[str] = mapped_column(String(40), nullable=False)
+    fault_revision: Mapped[str] = mapped_column(String(40), nullable=False)
+    expected_repaired_tree: Mapped[str] = mapped_column(String(40), nullable=False)
+    branch: Mapped[str] = mapped_column(String(80), nullable=False)
+    backend_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    frontend_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    rollback_backend_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    rollback_frontend_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    backend_target: Mapped[str] = mapped_column(String(120), nullable=False)
+    frontend_target: Mapped[str] = mapped_column(String(120), nullable=False)
+    rollback_evidence_url: Mapped[str] = mapped_column(String(250), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="armed")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    alert_incident_id: Mapped[str | None] = mapped_column(
+        ForeignKey("alert_incidents.id", ondelete="RESTRICT"), unique=True
+    )
+    claimed_run_id: Mapped[int | None] = mapped_column(BigInteger)
+    claimed_run_attempt: Mapped[int | None] = mapped_column(Integer)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -3,7 +3,7 @@ name: Sudoku pipeline
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, demo/save-recovery]
 
 permissions:
   contents: read
@@ -26,7 +26,11 @@ jobs:
 
   publish:
     needs: tests
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'sadevaraj/aidevtools_prj'
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'sadevaraj/aidevtools_prj' &&
+      (github.ref == 'refs/heads/main' ||
+      (github.ref == 'refs/heads/demo/save-recovery' && vars.DEMO_RECOVERY_ENABLED == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -38,7 +42,26 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: github.ref == 'refs/heads/demo/save-recovery'
+        with:
+          ref: ${{ vars.DEMO_TRUSTED_REVISION }}
+          path: trusted-tools
+          persist-credentials: false
+      - name: Require exact owner-authorized repaired demo tree
+        if: github.ref == 'refs/heads/demo/save-recovery'
+        env:
+          DEMO_RECOVERY_ENABLED: ${{ vars.DEMO_RECOVERY_ENABLED }}
+          DEMO_EXPECTED_REPAIRED_TREE: ${{ vars.DEMO_EXPECTED_REPAIRED_TREE }}
+          DEMO_TRUSTED_REVISION: ${{ vars.DEMO_TRUSTED_REVISION }}
+          DEMO_FAULT_REVISION: ${{ vars.DEMO_FAULT_REVISION }}
+          DEMO_EXPIRES_AT: ${{ vars.DEMO_EXPIRES_AT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: python3 "$GITHUB_WORKSPACE/trusted-tools/scripts/demo_control.py" verify-merge
       - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           registry: ghcr.io
@@ -85,7 +108,13 @@ jobs:
 
   deploy-development:
     needs: [tests, publish]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'sadevaraj/aidevtools_prj' && vars.RENDER_DEV_CD_ENABLED == 'true' && vars.RENDER_DEV_VERIFIED == 'true'
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'sadevaraj/aidevtools_prj' &&
+      vars.RENDER_DEV_CD_ENABLED == 'true' &&
+      vars.RENDER_DEV_VERIFIED == 'true' &&
+      ((github.ref == 'refs/heads/main') ||
+      (github.ref == 'refs/heads/demo/save-recovery' && vars.DEMO_RECOVERY_ENABLED == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     environment: sudoku-development
@@ -94,6 +123,13 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        if: github.ref == 'refs/heads/demo/save-recovery'
+        with:
+          ref: ${{ vars.DEMO_TRUSTED_REVISION }}
+          path: trusted-tools
           persist-credentials: false
       - name: Deploy exact published development pair
         env:
@@ -102,10 +138,20 @@ jobs:
           RENDER_DEV_CD_ENABLED: ${{ vars.RENDER_DEV_CD_ENABLED }}
           RENDER_DEV_VERIFIED: ${{ vars.RENDER_DEV_VERIFIED }}
           RENDER_DEV_VERIFICATION_URL: ${{ vars.RENDER_DEV_VERIFICATION_URL }}
+          DEMO_RECOVERY_ENABLED: ${{ vars.DEMO_RECOVERY_ENABLED }}
+          DEMO_EXPECTED_REPAIRED_TREE: ${{ vars.DEMO_EXPECTED_REPAIRED_TREE }}
+          DEMO_TRUSTED_REVISION: ${{ vars.DEMO_TRUSTED_REVISION }}
+          DEMO_FAULT_REVISION: ${{ vars.DEMO_FAULT_REVISION }}
+          DEMO_EXPIRES_AT: ${{ vars.DEMO_EXPIRES_AT }}
           RENDER_DEV_BACKEND_SERVICE_ID: ${{ vars.RENDER_DEV_BACKEND_SERVICE_ID }}
           RENDER_DEV_FRONTEND_SERVICE_ID: ${{ vars.RENDER_DEV_FRONTEND_SERVICE_ID }}
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-        run: python3 scripts/pipeline.py deploy
+        run: |
+          if [ "$GITHUB_REF" = refs/heads/demo/save-recovery ]; then
+            python3 "$GITHUB_WORKSPACE/trusted-tools/scripts/pipeline.py" deploy
+          else
+            python3 scripts/pipeline.py deploy
+          fi
       - name: Retain deployment result, including partial failures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

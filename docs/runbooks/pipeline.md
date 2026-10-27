@@ -2,6 +2,15 @@
 
 ## Readiness and authority
 
+The approved [#20 development-demo exception](development-save-demo.md) adds
+ordinary tests on `demo/save-recovery`, plus default-off publication/development
+CD **only** for its owner-authorized exact repaired merge tree. Fault F stays red.
+The separate owner-dispatched fault publication workflow does not bypass or
+weaken the ordinary test job. Follow the dedicated runbook for expiring T/F
+bindings, durable claim/revocation, independent same-candidate runtime evidence,
+manual non-squash merge and verified paired rollback. Main behavior is unchanged.
+Local tests do not establish remote entitlement, delivery, or recovery.
+
 Issue [#12](https://github.com/sadevaraj/aidevtools_prj/issues/12) implements this
 pipeline under the [agent-recorded human approval](https://github.com/sadevaraj/aidevtools_prj/issues/12#issuecomment-6428965305).
 That approval permits **implementation before #13**, not deployment before

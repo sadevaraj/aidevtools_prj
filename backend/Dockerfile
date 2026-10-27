@@ -16,6 +16,8 @@ CMD ["sh", "-c", "python -m app.migrate && exec python -m app.server"]
 
 FROM runtime AS tests
 
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements-test.txt ./requirements-test.txt
 RUN pip install --no-cache-dir --requirement requirements-test.txt
 COPY backend/tests ./tests
@@ -24,6 +26,8 @@ COPY observability/grafana-cloud-alert /observability/grafana-cloud-alert
 COPY scripts/test.sh ./scripts/test.sh
 COPY scripts/pipeline.py ./scripts/pipeline.py
 COPY scripts/repair_runner.py ./scripts/repair_runner.py
+COPY scripts/demo_control.py ./scripts/demo_control.py
+COPY .github/workflows/development-save-demo.yml ./.github/workflows/development-save-demo.yml
 COPY .github/workflows/pipeline.yml ./.github/workflows/pipeline.yml
 COPY .github/workflows/repair.yml ./.github/workflows/repair.yml
 COPY .github/agents ./.github/agents

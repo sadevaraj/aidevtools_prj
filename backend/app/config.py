@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     alert_dispatch_token: SecretStr | None = Field(
         default=None, validation_alias="ALERT_DISPATCH_TOKEN"
     )
+    demo_control_enabled: bool = Field(
+        default=False, validation_alias="DEMO_CONTROL_ENABLED"
+    )
+    demo_control_token: SecretStr | None = Field(
+        default=None, validation_alias="DEMO_CONTROL_TOKEN"
+    )
 
     @property
     def secure_cookies(self) -> bool:
@@ -81,6 +87,13 @@ class Settings(BaseSettings):
     def require_session_secret(cls, value: SecretStr) -> SecretStr:
         if len(value.get_secret_value()) < 32:
             raise ValueError("must contain at least 32 characters")
+        return value
+
+    @field_validator("demo_control_token")
+    @classmethod
+    def require_demo_control_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value()) < 32:
+            raise ValueError("demo owner credential must contain at least 32 characters")
         return value
 
     @field_validator("login_rate_limit")

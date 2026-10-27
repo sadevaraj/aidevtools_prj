@@ -5,13 +5,14 @@ import logging
 import secrets
 import re
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from itsdangerous import BadSignature, URLSafeSerializer
-from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -23,13 +24,21 @@ from opentelemetry.trace import Status, StatusCode
 
 from app.config import load_settings
 from app.database import get_db
-from app.models import AuthSession, Game, Player, Puzzle
+from app.models import (
+    AlertIncident,
+    AuthSession,
+    DevelopmentDemoAuthorization,
+    Game,
+    Player,
+    Puzzle,
+)
 from app.sudoku import is_complete, is_valid_solution, preserves_clues, validate_board
 from app.telemetry import instrument_app, tracer
 from app.alerting import (
     IncidentAuthorizationError,
     InvalidWorkflowIdentity,
     MAX_BODY_BYTES,
+    DemoAuthorizationUnavailable,
     InvalidAlert,
     accept_incident,
     alert_lifespan,
@@ -94,6 +103,8 @@ async def csrf_protection(request: Request, call_next):
     alert_routes = {
         "/api/alerts/grafana",
         "/api/alerts/repair/claim",
+        "/api/alerts/demo/arm",
+        "/api/alerts/demo/revoke",
     }
     alert_route = request.method == "POST" and request.url.path in alert_routes
     if (
@@ -229,7 +240,12 @@ async def receive_grafana_alert(request: Request, db: DatabaseDependency):
     except (json.JSONDecodeError, UnicodeDecodeError, InvalidAlert):
         raise HTTPException(status_code=422, detail="Unsupported alert payload.") from None
     try:
-        created = accept_incident(db, incident_id)
+        created = accept_incident(
+            db, incident_id, require_demo_authorization=settings.demo_control_enabled
+        )
+    except DemoAuthorizationUnavailable:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="No active demo authorization.") from None
     except OverflowError:
         raise HTTPException(status_code=429, detail="Alert intake limit reached.") from None
     except Exception as error:
@@ -247,6 +263,172 @@ class RepairClaimRequest(RequestBody):
     incident_id: str
     expires_at: str
     action: Literal["claim", "verify"]
+
+
+class DemoAuthorizationRequest(RequestBody):
+    trusted_revision: StrictStr
+    fault_revision: StrictStr
+    expected_repaired_tree: StrictStr
+    branch: StrictStr
+    backend_digest: StrictStr
+    frontend_digest: StrictStr
+    rollback_backend_digest: StrictStr
+    rollback_frontend_digest: StrictStr
+    expires_at: StrictStr
+    rollback_evidence_url: StrictStr
+    rollback_pair_verified: StrictBool
+    development_window_confirmed: StrictBool
+    image_provenance_verified: StrictBool
+
+
+def _demo_bearer_is_valid(request: Request) -> bool:
+    if settings.demo_control_token is None:
+        return False
+    authorization = request.headers.get("authorization", "")
+    return secrets.compare_digest(
+        authorization,
+        f"Bearer {settings.demo_control_token.get_secret_value()}",
+    )
+
+
+@app.post("/api/alerts/demo/arm", status_code=201)
+@limiter.limit("3/hour")
+async def arm_development_demo(request: Request, db: DatabaseDependency):
+    """Owner-arm one exact development fault/recovery authorization."""
+    if (
+        not settings.demo_control_enabled
+        or not settings.alert_repair_enabled
+        or settings.app_env != "development"
+    ):
+        raise HTTPException(status_code=404, detail="Demo control is unavailable.")
+    if settings.demo_control_token is None:
+        raise HTTPException(status_code=503, detail="Demo control is not configured.")
+    if not _demo_bearer_is_valid(request):
+        raise HTTPException(status_code=401, detail="Demo authorization failed.")
+    length = request.headers.get("content-length")
+    if length is not None:
+        try:
+            if int(length) < 0 or int(length) > 4096:
+                raise HTTPException(status_code=413, detail="Demo authorization is too large.")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid demo authorization.") from None
+    chunks = bytearray()
+    async for chunk in request.stream():
+        if len(chunks) + len(chunk) > 4096:
+            raise HTTPException(status_code=413, detail="Demo authorization is too large.")
+        chunks.extend(chunk)
+    try:
+        authorization = DemoAuthorizationRequest.model_validate_json(chunks)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Invalid demo authorization.") from None
+    if (
+        not re.fullmatch(r"[0-9a-f]{40}", authorization.trusted_revision)
+        or not re.fullmatch(r"[0-9a-f]{40}", authorization.fault_revision)
+        or not re.fullmatch(r"[0-9a-f]{40}", authorization.expected_repaired_tree)
+        or authorization.trusted_revision == authorization.fault_revision
+        or authorization.backend_digest == authorization.rollback_backend_digest
+        or authorization.frontend_digest == authorization.rollback_frontend_digest
+        or authorization.branch != "demo/save-recovery"
+        or not all(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+            for digest in (
+                authorization.backend_digest,
+                authorization.frontend_digest,
+                authorization.rollback_backend_digest,
+                authorization.rollback_frontend_digest,
+            )
+        )
+        or not all(
+            (
+                authorization.rollback_pair_verified,
+                authorization.development_window_confirmed,
+                authorization.image_provenance_verified,
+            )
+        )
+        or not re.fullmatch(
+            r"https://github\.com/sadevaraj/aidevtools_prj/issues/13#issuecomment-[0-9]+",
+            authorization.rollback_evidence_url,
+        )
+    ):
+        raise HTTPException(status_code=422, detail="Demo authorization was rejected.")
+    try:
+        expiry = datetime.fromisoformat(authorization.expires_at.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Demo expiry is invalid.") from None
+    now = datetime.now(timezone.utc)
+    if expiry.tzinfo is None or not (
+        now + timedelta(minutes=2) < expiry.astimezone(timezone.utc)
+        <= now + timedelta(minutes=60)
+    ):
+        raise HTTPException(status_code=422, detail="Demo expiry is outside the allowed window.")
+    if authorization.rollback_evidence_url == "":
+        raise HTTPException(status_code=422, detail="Rollback evidence is required.")
+    try:
+        db.execute(text("SELECT pg_advisory_xact_lock(781230042)"))
+        active = db.scalar(
+            select(DevelopmentDemoAuthorization)
+            .where(
+                DevelopmentDemoAuthorization.state.in_(("armed", "claimed")),
+                DevelopmentDemoAuthorization.expires_at > now,
+            )
+            .with_for_update()
+        )
+        if active is not None:
+            raise HTTPException(status_code=409, detail="Another demo authorization is active.")
+        authorization_id = secrets.token_hex(32)
+        row = DevelopmentDemoAuthorization(
+            id=authorization_id,
+            trusted_revision=authorization.trusted_revision,
+            fault_revision=authorization.fault_revision,
+            expected_repaired_tree=authorization.expected_repaired_tree,
+            branch=authorization.branch,
+            backend_digest=authorization.backend_digest,
+            frontend_digest=authorization.frontend_digest,
+            rollback_backend_digest=authorization.rollback_backend_digest,
+            rollback_frontend_digest=authorization.rollback_frontend_digest,
+            backend_target="https://simple-sudoku-backend.onrender.com",
+            frontend_target="https://simple-sudoku-frontend.onrender.com",
+            rollback_evidence_url=authorization.rollback_evidence_url,
+            expires_at=expiry.astimezone(timezone.utc),
+        )
+        db.add(row)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.warning("Demo authorization persistence failed.")
+        raise HTTPException(status_code=503, detail="Demo authorization is unavailable.") from None
+    return {
+        "armed": True,
+        "authorization_id": row.id,
+        "expires_at": row.expires_at.isoformat(),
+        "branch": row.branch,
+        "trusted_revision": row.trusted_revision,
+        "fault_revision": row.fault_revision,
+        "expected_repaired_tree": row.expected_repaired_tree,
+    }
+
+
+@app.post("/api/alerts/demo/revoke")
+@limiter.limit("10/minute")
+def revoke_development_demo(request: Request, db: DatabaseDependency):
+    """Emergency stop: revoke all current demo claims before owner rollback."""
+    if not settings.demo_control_enabled or settings.app_env != "development":
+        raise HTTPException(status_code=404, detail="Demo control is unavailable.")
+    if not _demo_bearer_is_valid(request):
+        raise HTTPException(status_code=401, detail="Demo authorization failed.")
+    db.execute(text("SELECT pg_advisory_xact_lock(781230042)"))
+    rows = db.scalars(
+        select(DevelopmentDemoAuthorization)
+        .where(DevelopmentDemoAuthorization.state.in_(("armed", "claimed")))
+        .with_for_update()
+    ).all()
+    for row in rows:
+        row.state = "revoked"
+    db.commit()
+    return {"revoked": len(rows)}
 
 
 @app.post("/api/alerts/repair/claim")
@@ -291,6 +473,13 @@ async def claim_repair_execution(
             workflow_run,
             expected_expires_at=body.expires_at,
             claim=body.action == "claim",
+            require_demo_authorization=settings.demo_control_enabled,
+        )
+        incident = db.get(AlertIncident, body.incident_id)
+        demo = (
+            db.get(DevelopmentDemoAuthorization, incident.demo_authorization_id)
+            if incident is not None and incident.demo_authorization_id is not None
+            else None
         )
         db.commit()
     except IncidentAuthorizationError:
@@ -300,13 +489,29 @@ async def claim_repair_execution(
         db.rollback()
         logger.warning("Repair authorization persistence failed.")
         raise HTTPException(status_code=503, detail="Repair authorization is unavailable.") from None
-    return {
+    result = {
         "authorized": True,
         "expires_at": expiry.isoformat(),
         "incident_id": body.incident_id,
         "run_id": str(workflow_run.run_id),
         "run_attempt": str(workflow_run.run_attempt),
     }
+    if demo is not None:
+        result.update(
+            {
+                "branch": demo.branch,
+                "trusted_revision": demo.trusted_revision,
+                "fault_revision": demo.fault_revision,
+                "expected_repaired_tree": demo.expected_repaired_tree,
+                "backend_digest": demo.backend_digest,
+                "frontend_digest": demo.frontend_digest,
+                "rollback_backend_digest": demo.rollback_backend_digest,
+                "rollback_frontend_digest": demo.rollback_frontend_digest,
+                "backend_target": demo.backend_target,
+                "frontend_target": demo.frontend_target,
+            }
+        )
+    return result
 
 
 @app.get("/api/auth/csrf")

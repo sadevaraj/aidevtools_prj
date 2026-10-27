@@ -135,8 +135,10 @@ def test_workflow_is_dispatch_only_segregates_permissions_and_uses_fixed_runtime
         "contents": "read",
         "copilot-requests": "write",
     }
-    assert jobs["verify"]["permissions"] == {"contents": "read"}
-    assert jobs["publish-pr"]["permissions"] == {"contents": "read"}
+    assert jobs["verify"]["permissions"] == {
+        "contents": "read", "copilot-requests": "write", "id-token": "write"
+    }
+    assert jobs["publish-pr"]["permissions"] == {"contents": "read", "id-token": "write"}
     assert jobs["candidate"]["needs"] == "authorization"
     assert set(jobs["verify"]["needs"]) == {"authorization", "candidate"}
     assert set(jobs["publish-pr"]["needs"]) == {"authorization", "verify"}
@@ -144,7 +146,7 @@ def test_workflow_is_dispatch_only_segregates_permissions_and_uses_fixed_runtime
         str(step) for step in jobs["candidate"]["steps"]
     )
     assert "secrets." not in candidate_text
-    assert "@github/copilot@1.0.103" in candidate_text
+    assert "docker build -f scripts/repair-runtime.Dockerfile" in candidate_text
     assert "ALERT_INCIDENT_ID" in candidate_text
     candidate_steps = jobs["candidate"]["steps"]
     assert not any(
@@ -178,6 +180,20 @@ def test_candidate_patch_allows_only_save_typo_and_regression_test():
     repair_runner.validate_patch(MAIN_PATCH, TRUSTED_TEST_SOURCE)
     with pytest.raises(repair_runner.RepairGateError):
         repair_runner.validate_patch(PATCH, TRUSTED_TEST_SOURCE)
+
+
+@pytest.mark.parametrize(("original", "weakened"), [
+    ("assert persisted.board == board", 'assert persisted.board != PUZZLES[0]["clues"]'),
+    ('assert reopened.json()["board"] == board', 'assert reopened.status_code == 200'),
+    ('assert reopened.status_code == 200', 'assert True'),
+    ('assert persisted.last_saved_at is None', 'assert True'),
+])
+def test_trusted_regression_rejects_weakened_persistence_reopen_and_rollback(original, weakened):
+    assert original in TRUSTED_TEST_SOURCE
+    with pytest.raises(repair_runner.RepairGateError, match="complete trusted regression"):
+        repair_runner.validate_patch(
+            MAIN_PATCH, TRUSTED_TEST_SOURCE.replace(original, weakened, 1)
+        )
 
 
 def test_candidate_patch_rejects_unrelated_executable_test_code():
@@ -474,7 +490,7 @@ def test_workflow_binds_all_downstream_gates_to_trusted_outputs_and_attempt_arti
     jobs = workflow["jobs"]
     assert jobs["authorization"]["outputs"] == {
         key: "${{ steps.claim.outputs." + key + " }}"
-        for key in ("run_id", "run_attempt", "incident_id", "expires_at")
+        for key in ("run_id", "run_attempt", "incident_id", "expires_at", *repair_runner.DEMO_CONTEXT_KEYS)
     }
     for job in ("candidate", "verify", "publish-pr"):
         for step in jobs[job]["steps"]:
@@ -488,7 +504,10 @@ def test_workflow_binds_all_downstream_gates_to_trusted_outputs_and_attempt_arti
                 assert step["with"]["name"].endswith(
                     "${{ github.run_id }}-${{ github.run_attempt }}"
                 )
-        assert "id-token" not in jobs[job]["permissions"]
+        if job == "candidate":
+            assert "id-token" not in jobs[job]["permissions"]
+        else:
+            assert jobs[job]["permissions"]["id-token"] == "write"
     steps = jobs["publish-pr"]["steps"]
     gate = next(i for i, step in enumerate(steps) if "verify-authorization" in step.get("run", ""))
     credential = next(i for i, step in enumerate(steps) if "token" in step.get("with", {}))

@@ -190,22 +190,16 @@ The user later approved one narrowly scoped operational alert in chat on
 2026-10-27; the approval is recorded as agent-authored evidence in
 [issue #18](https://github.com/sadevaraj/aidevtools_prj/issues/18#issuecomment-6436151791).
 
-Issue #18 tracks a Grafana Cloud-managed alert rule over the existing bounded
-`sudoku_save_requests_total` metric for at least one save-operation HTTP 5xx in a
-rolling five-minute window, delivered through a Grafana webhook contact point.
-Issue #18 is notification only: no application-hosted receiver, automatic
-remediation, or runtime/on-call agent is in that issue's scope. Expected 4xx outcomes and
-telemetry-export failures are not save-failure alerts. A missing metric sample
-does not itself establish a qualifying save 5xx; broader telemetry no-data
-alerting remains undecided. The owner must manage any real webhook destination
-and authentication privately. No Grafana Cloud/Render settings, credentials,
-remote delivery, or deployed alert have been applied or verified here.
-
-Other previously discussed candidates—including a disposable local Compose
-PostgreSQL stop/start recovery pair—remain deferred. These exclusions remain
-the scope of issue #18; its notification-only criteria are unchanged. The
-separately approved, bounded development responder is tracked under issue #19
-below and is not part of issue #18.
+Issue #18's current body includes a Grafana Cloud-managed save-5xx alert,
+authenticated development receiver, and bounded repair workflow/PR with owner
+approval for merge/deployment. Its current criteria supersede older
+notification-only descriptions in this file. The alert is based on the bounded
+`sudoku_save_requests_total` metric: at least one save-operation HTTP 5xx in a
+rolling five-minute window; expected 4xx, telemetry-export failures, and
+no-data/query errors are not qualifying save failures. This remains a narrow
+development responder, not an unrestricted on-call agent. Remote settings,
+credentials, delivery, and runtime execution have not been independently
+verified.
 
 ## Approved Development-Only Alert-to-Copilot Repair
 
@@ -217,13 +211,15 @@ deployment.” This is agent-recorded chat evidence, not a human-authored GitHub
 comment; issue #19 records the exact excerpt and date.
 
 Issue #19 adds a development-only path for the existing save-server-error
-FIRING alert without changing issue #18's notification-only requirements:
+FIRING alert. Issue #18's current body includes that later bounded repair scope;
+its original notification-only approval remains historical evidence:
 
 1. Grafana posts to one authenticated, bounded route on the existing Sudoku
    backend. The feature is disabled by default; only the expected save 5xx
    rule, development backend, firing state, and positive rule evaluation value
    are accepted. Query errors and no-data do not qualify. Only the webhook
-   receiver and separate OIDC-validated claim endpoint are exempt from CSRF;
+   receiver, OIDC-validated claim endpoint, and distinct owner-bearer demo
+   arm/revoke endpoints are exempt from cookie CSRF;
    normal state-changing APIs retain their existing checks.
 2. PostgreSQL stores only a hashed incident identifier and fixed lifecycle
    metadata in an Alembic-managed outbox. A transaction lock, unique key, rate
@@ -298,13 +294,15 @@ process-shared, locked cache lasts at most 5 minutes; unknown key IDs do not
 cause refetches, failures clear expired keys and suppress fetches for 30 seconds,
 and no automatic fetch retries or stale-key fallback are allowed. Rotation may
 temporarily fail closed until the next refresh. The workflow's
-`id-token: write` permission is scoped to the isolated authorization job; the
+`id-token: write` permission is scoped to trusted authorization/verification/
+publication jobs (never the candidate runtime); the
 endpoint accepts only GitHub's signed OIDC token for the fixed workflow.
 This task does not create tokens, configure remote
 settings, transmit repository data to Copilot, or run Copilot, Actions, Grafana,
 or Render. The proposed isolated typo test is a deliberate local test fixture,
-not an observed production defect. It does not authorize committing broken
-source or injecting a live fault. Issues #12 and #13 remain prerequisites for
+not an observed production defect. The original #19 approval did not authorize
+committing broken source or injecting a live fault; only the exact later #20
+owner-gated exception below supersedes that prohibition. Issues #12 and #13 remain prerequisites for
 any later deployed demonstration, not for disabled local implementation.
 
 ## Remaining Operational Decisions and Follow-up
@@ -330,9 +328,70 @@ any later deployed demonstration, not for disabled local implementation.
   Render setup; successful deployed verification under issue #13 is required
   before the owner enables CD.
 - Secure telemetry destination for Render, retention, and hosting/free-tier limits.
-- Issue #18 remains the Grafana Cloud-managed save-5xx notification and contact
-  point; it must pass its delivery gates before closure. Issue #19 separately
-  tracks the approved disabled-by-default local receiver and bounded repair
-  workflow. Broader user-impact alerts, telemetry no-data policy, other repair
-  classes, and live fault/recovery demonstrations remain deferred and require
-  separate owner approval.
+- Issue #18's current body includes the Grafana save-5xx alert, authenticated
+  receiver, and bounded repair-PR path; earlier notification-only wording above
+  describes the historical scope and is superseded by its current issue body.
+  Issue #19 records the bounded default-off local receiver/repair implementation.
+  Broader user-impact alerts, telemetry no-data policy, other repair classes,
+  production, automatic merge, and unbounded remediation remain out of scope.
+
+## Issue #20: Exact owner-gated save-recovery demo extension
+
+The user approved the exact design in
+[issue #20](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6454530534)
+attributed in chat on 27 October 2026. This is agent-recorded human approval,
+not a human-authored GitHub comment. It supersedes only the #19 prohibition on a
+future live development fault: implementation work and local tests do not
+authorize a live run. The accepted exception is one deliberate one-line
+save-handler fault on `demo/save-recovery`; `main` remains healthy.
+
+- Trusted healthy revision `T` and exact fault revision `F` must have a
+  one-commit ancestry and a sole `backend/app/main.py` delta from
+  `body.board` to `body.borad`. Normal CI remains unchanged and fails on `F`.
+- A separate `workflow_dispatch` validates explicit owner gates, current
+  healthy rollback digests, exact development targets, branch ancestry and
+  immutable image provenance. It runs the authenticated HTTP 500 and unchanged
+  persisted-board regression on a disposable PostgreSQL database before building
+  images. Builds run without publication/deployment secrets; publication only
+  pushes those prebuilt image artifacts. Deployment rechecks that both current
+  Render services are healthy and match the explicitly verified rollback pair.
+- The default-off backend demo authorization persists `T`, `F`, expected
+  repaired tree, branch, current and rollback image digests, fixed frontend and
+  backend targets, bounded expiry, alert association, and one-time OIDC
+  workflow run/attempt. Owner control uses a distinct secret; the alert payload
+  never chooses executable refs, commands, URLs, or permissions.
+- The trusted `main` repair workflow uses `T` tools/tests while a separate
+  checkout contains `F`. Only the one exact typo fix is accepted. Candidate and
+  test jobs receive no database, Render, or PR token. Separate QA and Reviewer
+  Copilot sessions must produce distinct PASS reports bound to the fault SHA
+  and exact patch hash before a trusted publication job receives its PR token.
+  The resulting PR targets `demo/save-recovery` while its tip is still `F`;
+  human merge is manual.
+- Copilot runs in a non-root, read-only-root container with resource limits,
+  dropped capabilities, no host home/socket mounts, a disposable home, and
+  read-only T instructions. Only the read/Copilot job token is forwarded.
+  The candidate cannot access DB, Render, OIDC or PR publication credentials.
+  The exact repaired index tree must equal T's tree; only then T's full harness
+  executes, producing a test receipt bound to F, patch, tree, run and attempt.
+  Two distinct read-only QA/Reviewer CLI processes must pass that same candidate.
+  Evidence artifacts are attempt-qualified, not agent-authored role-name flags.
+  Revoke/expiry is rechecked at the server before publication credentials.
+- The regular demo-branch pipeline runs the unchanged full suite and publishes
+  or deploys only when the push tree equals the authorized repaired tree and
+  owner-controlled development/CD gates remain enabled. `main` is never
+  weakened. Rollback and stop actions remain owner-operated.
+- Recovery requires an unexpired owner window and manual two-parent merge
+  directly onto F (no squash/rebase/fast-forward), with both repaired candidate
+  and merge trees equal the authorized T tree. Publication/deployment gates use
+  T tools rather than the candidate's scripts. The migration is additive;
+  image rollback does not downgrade schema or rewrite player data. Owner
+  revocation disables existing claims as well as future claims.
+
+The current operational prerequisites are not all met. The user reports the
+corrective revision was deployed and login/save were checked; this is attributed
+evidence only. Issue #13 remains open, healthy rollback-pair verification is
+unavailable, the PR publication credential is absent, Copilot quota/entitlement
+is unverified, and demo settings are not enabled. The fault, alert, agent,
+publication, deployment, merge, rollback, and recovery chain has not been run.
+See the exact owner steps in
+[the development save-demo runbook](runbooks/development-save-demo.md).

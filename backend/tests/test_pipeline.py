@@ -548,7 +548,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_triggers_and_read_only_default(self):
         self.assertEqual(set(self.workflow["on"]), {"pull_request", "push"})
-        self.assertEqual(self.workflow["on"]["push"]["branches"], ["main"])
+        self.assertEqual(self.workflow["on"]["push"]["branches"], ["main", "demo/save-recovery"])
         self.assertEqual(self.workflow["permissions"], {"contents": "read"})
         self.assertEqual(self.workflow["concurrency"]["cancel-in-progress"], "false")
 

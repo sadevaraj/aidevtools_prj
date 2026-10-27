@@ -268,6 +268,18 @@ and fresh authorization before publication/deployment.
 
 ## Deploy and roll back by tag
 
+For the narrowly approved [#20 development save-recovery demo](development-save-demo.md),
+record and select **immutable frontend/backend digests**, not just SHA tags, for
+both the fault and previously verified healthy rollback pair. The owner must
+complete the explicit prerequisite/window/credential/free-quota gates first.
+The controlled fault workflow checks the latest live deployments' resolved
+digests and health against that rollback pair before any fault deployment POST.
+If the provider schema/identity/digests cannot be verified, stop; do not infer
+current deployment from configured tags or relax preflight. Revoke/cancel,
+restore both exact healthy references manually, and verify save/reopen/
+persistence and alert recovery as described in the dedicated runbook.
+No live fault, deploy or rollback is authorized by local implementation evidence.
+
 For the first deployment, use Render's manual image deployment action to deploy
 the full SHA tag on both services. Verify the two services use the same commit
 SHA before beginning browser checks. Do not enable automatic deployment as part

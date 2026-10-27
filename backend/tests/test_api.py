@@ -205,16 +205,22 @@ def test_puzzle_list_game_start_save_and_resume_are_persisted_and_owned():
 
 
 def test_deliberate_save_typo_reproduces_500_and_repaired_save_persists(tmp_path):
-    """Reproduce in a temporary backend source checkout; never break app.main."""
+    """Prove the isolated fault and repair against a disposable PostgreSQL DB.
+
+    On the healthy revision this creates the one-line fault in a temporary
+    checkout. On the deliberately faulted demo revision it exercises that exact
+    source directly. Neither path changes the test process's imported app.
+    """
     source = Path(api_module.__file__).read_text(encoding="utf-8")
     correct_line = "game.board = _validated_board(body.board, puzzle.clues)"
-    assert source.count(correct_line) == 1
-    broken_source = source.replace(
-        correct_line,
-        "game.board = _validated_board(body.borad, puzzle.clues)",
-        1,
+    fault_line = "game.board = _validated_board(body.borad, puzzle.clues)"
+    assert source.count(correct_line) + source.count(fault_line) == 1
+    broken_source = (
+        source.replace(correct_line, fault_line, 1)
+        if correct_line in source
+        else source
     )
-    checkout = tmp_path / "checkout"
+    checkout = tmp_path / "faulted"
     shutil.copytree(
         Path(api_module.__file__).parent,
         checkout / "app",
@@ -222,7 +228,7 @@ def test_deliberate_save_typo_reproduces_500_and_repaired_save_persists(tmp_path
     )
     isolated_main = checkout / "app" / "main.py"
     isolated_main.write_text(broken_source, encoding="utf-8")
-    probe = """
+    failed_probe = """
 from fastapi.testclient import TestClient
 from app.main import app
 with TestClient(app, raise_server_exceptions=False) as client:
@@ -249,7 +255,7 @@ with TestClient(app, raise_server_exceptions=False) as client:
     environment["PYTHONPATH"] = str(checkout)
     environment["OTEL_ENABLED"] = "false"
     reproduced = subprocess.run(
-        [sys.executable, "-c", probe],
+        [sys.executable, "-c", failed_probe],
         cwd=checkout,
         env=environment,
         capture_output=True,
@@ -264,28 +270,57 @@ with TestClient(app, raise_server_exceptions=False) as client:
         assert persisted.board == PUZZLES[0]["clues"]
         assert persisted.last_saved_at is None
 
-    # The unmodified application represents the corrected body.board handler.
-    repaired, token = client_with_csrf()
-    login = repaired.post(
-        "/api/auth/login",
-        json={"username": "TypoTest", "password": "Password1"},
-        headers={"X-CSRF-Token": token},
+    repaired_checkout = tmp_path / "repaired"
+    shutil.copytree(
+        checkout / "app",
+        repaired_checkout / "app",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    assert login.status_code == 200
-    token = repaired.cookies["sudoku_csrf"]
-    game = repaired.get(f"/api/games/{game_id}").json()
-    board = copy.deepcopy(game["board"])
+    repaired_main = repaired_checkout / "app" / "main.py"
+    repaired_source = repaired_main.read_text(encoding="utf-8")
+    assert repaired_source.count(fault_line) == 1
+    repaired_main.write_text(
+        repaired_source.replace(fault_line, correct_line, 1), encoding="utf-8"
+    )
+    board = copy.deepcopy(PUZZLES[0]["clues"])
     row, column = next(
         (r, c) for r in range(9) for c in range(9) if board[r][c] is None
     )
-    board[row][column] = PUZZLES[0]["solution"][row][column]
-    saved = repaired.put(
-        f"/api/games/{game_id}",
-        json={"board": board},
-        headers={"X-CSRF-Token": token},
+    board[row][column] = 4
+    save_probe = f"""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app, raise_server_exceptions=False) as client:
+    token = client.get("/api/auth/csrf").json()["csrfToken"]
+    response = client.post(
+        "/api/auth/login", json={{"username": "TypoTest", "password": "Password1"}},
+        headers={{"X-CSRF-Token": token}},
+    )
+    assert response.status_code == 200
+    token = client.cookies["sudoku_csrf"]
+    headers = {{"X-CSRF-Token": token}}
+    game = client.get("/api/games/{game_id}").json()
+    board = {board!r}
+    saved = client.put(
+        f"/api/games/{{game['id']}}", json={{"board": board}}, headers=headers
     )
     assert saved.status_code == 200
     assert saved.json()["board"] == board
+    reopened = client.get(f"/api/games/{{game['id']}}")
+    assert reopened.status_code == 200
+    assert reopened.json()["board"] == board
+"""
+    environment["PYTHONPATH"] = str(repaired_checkout)
+    repaired = subprocess.run(
+        [sys.executable, "-c", save_probe],
+        cwd=repaired_checkout,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert repaired.returncode == 0, "isolated repaired save did not persist"
     with SessionLocal() as db:
         persisted = db.get(Game, game_id)
         assert persisted.board == board

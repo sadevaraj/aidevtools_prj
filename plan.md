@@ -13,8 +13,49 @@ The approved [product specification](docs/specs/product.md),
 [architecture](docs/architecture.md), [delivery process](docs/process.md), and
 [specification-change guard](.github/agents/guards/specification-changes.md)
 remain authoritative. This authorizes only the bounded development scope below.
-Issue #18 remains notification-only with unchanged criteria. The Sudoku product
-specification and rules do not change.
+Issue #18's current body also includes the subsequently approved bounded repair
+path. Its original notification-only scope is historical, not its current
+criteria. The Sudoku product specification and rules do not change.
+
+### Approved #20 exception (27 October 2026)
+
+[Issue #20 and approval evidence](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6454530534)
+authorize implementation of one **future owner-operated development** demo,
+not its live execution. This narrowly supersedes the local-only fault
+prohibitions in the historical #19 phases below. Main stays healthy. A dedicated
+`demo/save-recovery` commit `F` must descend directly from healthy tooling `T`
+and change only `body.board` to `body.borad` in the save handler. Ordinary CI
+still fails on F. No tests, product requirements, or guards are weakened.
+
+The separate owner-dispatched fault workflow proves healthy T and the
+authenticated fault/rollback/repaired persistence fixture using disposable
+PostgreSQL. Unprivileged builds produce paired image archives; trusted jobs
+check provenance and publish immutable digests without executing candidate
+scripts. Before fault deployment, a separate owner credential arms the healthy
+server with T/F, repaired tree, fixed development targets, both fault/rollback
+digests, rollback evidence, and an expiring window. Deployment rechecks the
+currently healthy rollback pair.
+
+The existing main repair workflow consumes one durable OIDC run/attempt claim.
+Candidate Copilot runs in a constrained container without host home, Docker
+socket, OIDC, DB, Render, or PR credentials. T instructions are read-only.
+Only the exact repair is accepted. Its tree must equal T's tree before the
+**trusted** full test harness runs. Two fresh QA/Reviewer sessions and their
+actual test receipt bind the same F, patch hash, tree, run, and attempt before
+credentialed PR publication. The PR base must still be F. The owner reviews
+and manually performs a non-squash merge; the ordinary demo pipeline runs full
+tests, validates the exact expected tree and F merge parent, then uses the
+owner-enabled development delivery path. There is no automatic merge.
+
+Implementation -> independent Prj_QA -> Prj_Reviewer is still mandatory on the
+same working diff and baseline. Local checks do **not** close #20's live gates.
+Follow [the concrete owner runbook](docs/runbooks/development-save-demo.md).
+Issues #12/#13, healthy rollback proof, credential permissions, CLI entitlement,
+available free quota/no-overage, and the explicit test window remain owner/live
+prerequisites. Unknown/true flags and token presence alone are not evidence.
+Stop/revoke/rollback on uncertainty or timeout. No production, paid enablement,
+business-data rewrites, provider calls, remote branches, publication, or
+deployment occurs in this implementation task.
 
 ## Goal and Fixed Flow
 
@@ -147,7 +188,7 @@ Stop on unsupported alerts, missing owner gates, exhausted attempts, quota,
 privacy or budget uncertainty, failed tests, or publication/deployment errors.
 Do not start a recursive repair loop. Owner credentials and remote settings
 remain unconfigured; live Copilot, Actions, Grafana, Render, and recovery are
-NOT VERIFIED. Issue #18 remains separate notification-only scope. Issues #12
+NOT VERIFIED. Issue #18's current criteria include the later bounded repair path. Issues #12
 and #13 remain later prerequisites to any separately approved deployed
 demonstration.
 

@@ -1,0 +1,232 @@
+name: Owner-gated Sudoku save-recovery demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      trusted_revision:
+        description: Full healthy main revision to trust
+        required: true
+        type: string
+      fault_revision:
+        description: Full one-line fault commit on demo/save-recovery
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sudoku-development-save-demo
+  cancel-in-progress: false
+
+env:
+  DEMO_FAULT_ENABLED: ${{ vars.DEMO_FAULT_ENABLED }}
+  DEMO_ROLLBACK_PAIR_VERIFIED: ${{ vars.DEMO_ROLLBACK_PAIR_VERIFIED }}
+  DEMO_WINDOW_CONFIRMED: ${{ vars.DEMO_WINDOW_CONFIRMED }}
+  DEMO_IMAGE_PROVENANCE_VERIFIED: ${{ vars.DEMO_IMAGE_PROVENANCE_VERIFIED }}
+  DEMO_TARGETS_CONFIRMED: ${{ vars.DEMO_TARGETS_CONFIRMED }}
+  DEMO_ROLLBACK_EVIDENCE_URL: ${{ vars.DEMO_ROLLBACK_EVIDENCE_URL }}
+  DEMO_EXPIRES_AT: ${{ vars.DEMO_EXPIRES_AT }}
+  TRUSTED_REVISION: ${{ inputs.trusted_revision }}
+  FAULT_REVISION: ${{ inputs.fault_revision }}
+
+jobs:
+  authorize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate owner prerequisites and exact fault delta
+        env:
+          DEMO_FAULT_ENABLED: ${{ vars.DEMO_FAULT_ENABLED }}
+          DEMO_ROLLBACK_PAIR_VERIFIED: ${{ vars.DEMO_ROLLBACK_PAIR_VERIFIED }}
+          DEMO_WINDOW_CONFIRMED: ${{ vars.DEMO_WINDOW_CONFIRMED }}
+          DEMO_IMAGE_PROVENANCE_VERIFIED: ${{ vars.DEMO_IMAGE_PROVENANCE_VERIFIED }}
+          DEMO_TARGETS_CONFIRMED: ${{ vars.DEMO_TARGETS_CONFIRMED }}
+          DEMO_ROLLBACK_EVIDENCE_URL: ${{ vars.DEMO_ROLLBACK_EVIDENCE_URL }}
+          DEMO_EXPIRES_AT: ${{ vars.DEMO_EXPIRES_AT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TRUSTED_REVISION: ${{ inputs.trusted_revision }}
+          FAULT_REVISION: ${{ inputs.fault_revision }}
+          MAIN_REVISION: ${{ github.sha }}
+        run: |
+          python3 -c 'import re,sys; sys.exit(0 if all(re.fullmatch(r"[0-9a-f]{40}",v) for v in sys.argv[1:]) else 1)' "$TRUSTED_REVISION" "$FAULT_REVISION"
+          test "$TRUSTED_REVISION" = "$MAIN_REVISION"
+          git fetch --no-tags origin "$FAULT_REVISION"
+          python3 scripts/demo_control.py verify-candidate \
+            --trusted-revision "$TRUSTED_REVISION" \
+            --fault-revision "$FAULT_REVISION"
+
+  reproduce-fault:
+    needs: authorize
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.trusted_revision }}
+          persist-credentials: false
+          path: tooling
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.fault_revision }}
+          persist-credentials: false
+          path: candidate
+      - name: Prove healthy trusted revision with the ordinary full suite
+        working-directory: tooling
+        run: sh scripts/test.sh
+      - name: Use only the authorized faulty source with trusted tooling
+        run: cp candidate/backend/app/main.py tooling/backend/app/main.py
+      - name: Reproduce authenticated 500 and prove database rollback on disposable PostgreSQL
+        working-directory: tooling
+        run: |
+          docker compose -p sudoku-demo-fault-${{ github.run_id }} -f compose.test.yaml run --build --rm api_tests sh -c 'python -m app.migrate && pytest -q tests/test_api.py::test_deliberate_save_typo_reproduces_500_and_repaired_save_persists'
+      - name: Remove disposable database and containers
+        if: always()
+        working-directory: tooling
+        run: docker compose -p sudoku-demo-fault-${{ github.run_id }} -f compose.test.yaml down --volumes --remove-orphans
+
+  build-fault-images:
+    needs: [authorize, reproduce-fault]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      fault_revision: ${{ steps.revision.outputs.value }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.fault_revision }}
+          persist-credentials: false
+      - id: revision
+        env:
+          FAULT_REVISION: ${{ inputs.fault_revision }}
+        run: echo "value=$FAULT_REVISION" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Build unprivileged backend image archive
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: backend/Dockerfile
+          target: production
+          push: false
+          outputs: type=docker,dest=/tmp/sudoku-demo-backend.tar
+          tags: localhost/simple-sudoku-backend:${{ inputs.fault_revision }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/sadevaraj/aidevtools_prj
+            org.opencontainers.image.revision=${{ inputs.fault_revision }}
+      - name: Build unprivileged frontend image archive
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: frontend
+          push: false
+          outputs: type=docker,dest=/tmp/sudoku-demo-frontend.tar
+          tags: localhost/simple-sudoku-frontend:${{ inputs.fault_revision }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/sadevaraj/aidevtools_prj
+            org.opencontainers.image.revision=${{ inputs.fault_revision }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sudoku-fault-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/sudoku-demo-backend.tar
+            /tmp/sudoku-demo-frontend.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-fault-images:
+    needs: [authorize, build-fault-images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: sudoku-development-demo
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      backend_digest: ${{ steps.publish.outputs.backend_digest }}
+      frontend_digest: ${{ steps.publish.outputs.frontend_digest }}
+      fault_revision: ${{ needs.build-fault-images.outputs.fault_revision }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.trusted_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: sudoku-fault-images-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/fault-images
+      - name: Revalidate branch, exact delta and window before publication credentials
+        run: >-
+          python3 scripts/demo_control.py verify-candidate
+          --trusted-revision "$TRUSTED_REVISION"
+          --fault-revision "$FAULT_REVISION"
+      - name: Authenticate registry publisher
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish only prebuilt artifact images and record immutable digests
+        id: publish
+        env:
+          DEMO_FAULT_REVISION: ${{ needs.build-fault-images.outputs.fault_revision }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          docker load --input "$RUNNER_TEMP/fault-images/sudoku-demo-backend.tar"
+          docker load --input "$RUNNER_TEMP/fault-images/sudoku-demo-frontend.tar"
+          python3 scripts/demo_control.py publish-pair
+
+  deploy-fault-pair:
+    needs: [authorize, publish-fault-images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: sudoku-development-demo
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.trusted_revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind exact built fault pair to one durable server authorization
+        env:
+          BACKEND_DIGEST: ${{ needs.publish-fault-images.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.publish-fault-images.outputs.frontend_digest }}
+          DEMO_ROLLBACK_BACKEND_DIGEST: ${{ vars.DEMO_ROLLBACK_BACKEND_DIGEST }}
+          DEMO_ROLLBACK_FRONTEND_DIGEST: ${{ vars.DEMO_ROLLBACK_FRONTEND_DIGEST }}
+          DEMO_CONTROL_TOKEN: ${{ secrets.DEMO_CONTROL_TOKEN }}
+        run: python3 scripts/demo_control.py arm-demo
+      - name: Deploy exact fault image pair to fixed Sudoku development services
+        env:
+          GITHUB_SHA: ${{ needs.publish-fault-images.outputs.fault_revision }}
+          BACKEND_DIGEST: ${{ needs.publish-fault-images.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.publish-fault-images.outputs.frontend_digest }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
+          DEMO_FAULT_DEPLOY_APPROVED: ${{ vars.DEMO_FAULT_DEPLOY_APPROVED }}
+          DEMO_ROLLBACK_PAIR_VERIFIED: ${{ vars.DEMO_ROLLBACK_PAIR_VERIFIED }}
+          DEMO_WINDOW_CONFIRMED: ${{ vars.DEMO_WINDOW_CONFIRMED }}
+          DEMO_ROLLBACK_EVIDENCE_URL: ${{ vars.DEMO_ROLLBACK_EVIDENCE_URL }}
+          DEMO_EXPIRES_AT: ${{ vars.DEMO_EXPIRES_AT }}
+          DEMO_IMAGE_PROVENANCE_VERIFIED: ${{ vars.DEMO_IMAGE_PROVENANCE_VERIFIED }}
+          DEMO_TARGETS_CONFIRMED: ${{ vars.DEMO_TARGETS_CONFIRMED }}
+          DEMO_ROLLBACK_BACKEND_DIGEST: ${{ vars.DEMO_ROLLBACK_BACKEND_DIGEST }}
+          DEMO_ROLLBACK_FRONTEND_DIGEST: ${{ vars.DEMO_ROLLBACK_FRONTEND_DIGEST }}
+          RENDER_DEV_VERIFICATION_URL: ${{ vars.RENDER_DEV_VERIFICATION_URL }}
+          RENDER_DEV_BACKEND_SERVICE_ID: ${{ vars.RENDER_DEV_BACKEND_SERVICE_ID }}
+          RENDER_DEV_FRONTEND_SERVICE_ID: ${{ vars.RENDER_DEV_FRONTEND_SERVICE_ID }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: python3 scripts/pipeline.py demo-deploy

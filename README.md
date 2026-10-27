@@ -169,7 +169,8 @@ The initial owner-approved sequence is:
    enables CD. No workflow execution or remote success is claimed here.
 
 The [pipeline runbook](docs/runbooks/pipeline.md) documents PR/main tests,
-main-only paired SHA/digest publication with `GITHUB_TOKEN`, exact-image Render
+main paired SHA/digest publication with `GITHUB_TOKEN` (plus the default-off,
+exact #20 demo-recovery exception), exact-image Render
 deployment, owner variables/environment secret setup, failure notifications,
 and operator fallback. Both CD flags default off; no Render credentials are
 available to this implementation. GitHub Actions failure notifications require
@@ -287,49 +288,49 @@ The [delivery process](docs/process.md), [agent team](.github/agents/README.md),
 and [shared specification guard](.github/agents/guards/specification-changes.md)
 describe how issues, DEV evidence, independent QA, and review are handled.
 
-## Approved alert-to-Copilot development path
+## Approved alert-to-Copilot development demo
 
-Issue [#19](https://github.com/sadevaraj/aidevtools_prj/issues/19) tracks a
-development-only authenticated Grafana alert receiver and bounded repair path.
-It is **disabled by default** and runs in the existing Sudoku backend; therefore
-it cannot receive an alert while that backend is down. It accepts only the
-expected development save-server-error firing event, persists a sanitized,
-deduplicated outbox record before acknowledgement, and dispatches to a fixed
-workflow/repository/ref. A GitHub Actions OIDC identity must claim the same
-server-issued, unexpired database incident before candidate execution; a
-per-incident run/attempt claim prevents ambiguous dispatch retries or manual
-fabricated inputs from starting another worker. No database credential is
-shared with the workflow. It does not change the notification-only requirements
-of [issue #18](https://github.com/sadevaraj/aidevtools_prj/issues/18).
+The current approved scope is tracked by
+[issue #20](https://github.com/sadevaraj/aidevtools_prj/issues/20), extending
+the bounded receiver/repair implementation in
+[issue #19](https://github.com/sadevaraj/aidevtools_prj/issues/19) and the
+broader alert path in [issue #18](https://github.com/sadevaraj/aidevtools_prj/issues/18).
+Issue #18's current body includes the authenticated receiver and bounded
+repair-PR path; earlier notification-only notes in the repository are stale.
 
-The workflow selects the existing `Prj_Coordinator` via Copilot CLI
-`--agent`/`--prompt`, with the repository's existing DEV/QA/Reviewer custom
-agent definitions. It is gated on owner confirmation of Free entitlement,
-available quota, no overage, and provider-transmission approval. Copilot CLI
-requests use `GITHUB_TOKEN` with `copilot-requests: write`; owner-managed
-dispatch and separate PR-publication credentials are required for eventual
-remote operation. No tokens or provider calls are included in local setup.
-The owner must also set the HTTPS `ALERT_REPAIR_AUTH_URL` repository variable
-to the backend's exact claim endpoint before enabling Actions; the disabled
-workflow fails closed if it is absent or does not match the durable incident.
-Candidate changes are restricted to the approved save-handler typo correction
-and regression test; merge and deployment remain human-controlled.
+The #20 approval permits only a future owner-operated one-demo exception:
+healthy trusted revision `T`, exact one-line `body.board` → `body.borad` fault
+revision `F` on `demo/save-recovery`, verified rollback image pair, development
+targets, immutable image provenance, and explicit test-window confirmation.
+Ordinary CI remains unchanged and is expected to fail on `F`; its tests are not
+weakened. A separate gated workflow validates the exact delta, builds unprivileged
+images, exercises an authenticated save failure/unchanged database board on
+disposable PostgreSQL, and only then exposes registry/deployment credentials to
+trusted publication steps. The existing backend receiver binds an accepted
+incident to durable `T`/`F`, branch, image digests, fixed Render targets, expiry,
+and one OIDC-authenticated run/attempt claim. Alert payloads do not select
+commands, refs, URLs, or permissions.
 
-These configuration capabilities do not authorize enabling the receiver or
-workflow. Keep the receiver disabled and Actions workflow disabled until the
-owner has separately configured and verified the issue #18 Grafana notification
-path, all receiver/dispatch authentication and HTTPS endpoint settings, and the
-Copilot entitlement, quota, no-overage, and provider-approval gates. Any remote
-development deployment or demonstration must also wait for issues #12 and #13;
-those remain separate dependencies and are not verified here.
+The main-ref repair workflow uses trusted `T` tooling and regression tests while
+the candidate operates only on the exact `F` checkout. It accepts only the
+single typo correction. Candidate/test jobs have no database, Render, or PR
+publication credentials. Separate current-candidate QA and Reviewer Copilot
+sessions must return distinct, patch-hash-bound PASS evidence before an isolated
+publisher can open a PR based on the still-unchanged `F` demo branch. The owner
+manually merges without squash/rebase/fast-forward directly onto F. The normal demo-branch pipeline then runs the full configured
+suite and can publish/deploy only the owner-enabled exact repaired tree and
+immutable image pair. Main remains healthy; merge is never automatic and
+development CD requires explicit owner enablement for the expected repair.
+No production service or completed-game data is a target.
 
-The deliberate `body.borad` failure is a **temporary isolated test fixture**,
-not an observed existing defect. Broken source is never committed, and no
-live fault injection or deployed demonstration is authorized by this
-implementation. Local PostgreSQL/mock tests do not verify Copilot provider
-execution, GitHub Actions, Grafana delivery, Render, or recovery. Remote setup
-remains **NOT VERIFIED**; issues #12 and #13 remain later prerequisites to any
-separately approved development deployment demonstration.
+Every feature and remote capability remains default-off. No live alert, Copilot
+provider request, Actions run, GHCR publication, Render deployment, rollback, or
+recovery was executed for this implementation. The user reports corrective
+deployment and login/save verification, but independent issue #13 verification,
+healthy rollback-pair evidence, missing PR credential, demo enablement, and
+Copilot entitlement/quota remain unverified. Issues #12 and #13 are open; do not
+enable or run the demo until the concrete prerequisites in
+[the owner-operated runbook](docs/runbooks/development-save-demo.md) are met.
 
 Course brief:
 https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project
