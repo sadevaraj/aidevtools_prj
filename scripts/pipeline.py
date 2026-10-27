@@ -127,21 +127,36 @@ def preflight(client, ids):
     # Check BOTH before mutating either. Fixed URLs prevent targeting Kanban/prod.
     for role, service_id in ids.items():
         service = client.request(f"/services/{service_id}")
-        details = service.get("serviceDetails", {})
-        configured_image = service.get("imagePath", "")
-        require(isinstance(details, dict) and isinstance(configured_image, str),
-                f"CD BLOCKED: malformed {role} service metadata.")
-        require(service.get("id") == service_id
-                and service.get("type") == "web_service"
-                and service.get("name") == f"simple-sudoku-{role}"
-                and details.get("url") == ORIGINS[role]
-                and details.get("runtime", details.get("env")) == "image"
-                and service.get("autoDeploy") == "no"
-                and re.fullmatch(
-                    re.escape(REGISTRY + role)
-                    + r"(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[0-9a-f]{64})",
-                    configured_image),
-                f"CD BLOCKED: {role} service identity/runtime/auto-deploy mismatch.")
+
+        def check(container, key, field, expected, valid):
+            # Field labels/expectations come only from code, never provider data
+            # or environment values. Do not include the rejected value or body.
+            prefix = f"CD BLOCKED: {role} service {field}"
+            require(key in container, f"{prefix} missing; expected {expected}.")
+            value = container[key]
+            require(valid(value), f"{prefix} invalid; expected {expected}.")
+            return value
+
+        check(service, "id", "id", "configured service ID", lambda v: v == service_id)
+        check(service, "type", "type", "web_service", lambda v: v == "web_service")
+        check(service, "name", "name", f"simple-sudoku-{role}",
+              lambda v: v == f"simple-sudoku-{role}")
+        details = check(service, "serviceDetails", "serviceDetails", "object",
+                        lambda v: isinstance(v, dict))
+        check(details, "url", "serviceDetails.url", ORIGINS[role],
+              lambda v: v == ORIGINS[role])
+        # Preserve the existing fallback: env is used only if runtime is absent,
+        # not when runtime is present but null/invalid. No new schema inference.
+        runtime_key = "runtime" if "runtime" in details else "env"
+        runtime_field = (f"serviceDetails.{runtime_key}" if runtime_key in details else
+                         "serviceDetails.runtime (fallback serviceDetails.env)")
+        check(details, runtime_key, runtime_field, "image", lambda v: v == "image")
+        check(service, "autoDeploy", "autoDeploy", "no", lambda v: v == "no")
+        check(service, "imagePath", "imagePath",
+              f"{REGISTRY}{role}:<tag> or {REGISTRY}{role}@sha256:<64 lowercase hex digits>",
+              lambda v: isinstance(v, str) and re.fullmatch(
+                  re.escape(REGISTRY + role)
+                  + r"(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[0-9a-f]{64})", v))
 
 
 def wait_live(client, service_id, deploy_id, expected_digest, sleep, clock):

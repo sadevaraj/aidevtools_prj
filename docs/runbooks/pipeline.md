@@ -173,6 +173,52 @@ The root command runs these same tests in Docker, requiring no host Python.
 
 ## Failures, notifications, and operator fallback
 
+### Diagnose a blocked service preflight
+
+Preflight checks both services before issuing either deployment POST. A failure
+identifies the role (`backend` or `frontend`), exact metadata field, whether it is
+`missing` (key absent) or `invalid` (present but not accepted, including null),
+and the expected safe value. For example:
+
+```text
+CD BLOCKED: backend service serviceDetails.runtime invalid; expected image.
+CD BLOCKED: frontend service autoDeploy missing; expected no.
+```
+
+Only code-defined field names and safe expectations are reported. Rejected
+values, raw service metadata, API response bodies, and bearer credentials must
+not be printed or attached to issues. Diagnose the precise field in the error:
+
+| Field | Diagnosis / required evidence |
+| --- | --- |
+| `id` | Must match the owner-configured service ID; the expected ID is intentionally not echoed. Confirm the intended Sudoku development target. |
+| `type`, `name` | Must be `web_service` and the role's exact `simple-sudoku-…` name listed above. |
+| `serviceDetails` | Must be an object; a missing/invalid container blocks inspection of its children. |
+| `serviceDetails.url` | Must be the role's exact fixed public Sudoku URL listed above. |
+| `serviceDetails.runtime` / `serviceDetails.env` | Must be `image`. The existing fallback checks `env` only when `runtime` is absent, not when it is null or invalid. The diagnostic names the selected key, or both keys if neither is present. |
+| `autoDeploy` | The current preflight requires the response field to be exactly the string `no`; missing, null, or other values block. |
+| `imagePath` | Must be the role's exact GHCR repository with a valid tag or lowercase SHA-256 digest; no other repository or malformed reference is accepted. |
+
+Render's official [image deployment documentation](https://render.com/docs/deploying-an-image)
+says image-backed services do not automatically redeploy when a registry tag
+changes, and documents the **Manual Deploy** control. Seeing that button alone
+is **not evidence** that the API returns `autoDeploy: no`. The generic SDK's
+`autoDeploy` field is deprecated in favor of `autoDeployTrigger`, but that does
+not establish the actual response shape for these image-backed services.
+This fix neither removes the `autoDeploy` safeguard nor treats the newer field
+as compatible evidence.
+
+Do not blindly retry the job or change settings/targets to silence an error.
+Keep CD disabled while the precise mismatch is unresolved. If provider schema
+compatibility is suspected, request a separately authorized, sanitized
+field-presence/type investigation and an explicit compatibility decision before
+changing validation. Do not fetch or dump authenticated metadata as part of
+ordinary troubleshooting. Missing metadata is not proof of disabled auto-deploy.
+After a reviewed fix, obtain authorization before any new workflow/deploy run;
+local diagnostic tests are not deployment verification.
+
+### Notifications and fallback
+
 Owner: in GitHub **Settings → Notifications → System → Actions**, enable
 notifications for workflow failures (email/web delivery and failure-only options
 are account-controlled). Verify the preferred address/channel and prove receipt

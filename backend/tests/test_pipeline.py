@@ -1,6 +1,8 @@
 """Offline delivery regression tests, also runnable with stdlib unittest."""
 
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -171,6 +173,188 @@ class PipelineTests(unittest.TestCase):
                     return result
                 self.client.request = changed
                 self.assert_blocked()
+
+    def assert_preflight_diagnostic(self, role, field, expected, value=None, missing=False):
+        self.client = FakeRender()
+        original = self.client.request
+
+        def changed(path, body=None):
+            result = original(path, body)
+            if path == f"/services/srv-{role}":
+                container = result
+                keys = field.split(".")
+                for key in keys[:-1]:
+                    container = container[key]
+                if missing:
+                    del container[keys[-1]]
+                else:
+                    container[keys[-1]] = value
+                # Unrelated metadata must never enter diagnostic output.
+                result["untrusted"] = "metadata-secret-marker"
+            return result
+
+        self.client.request = changed
+        self.env["GITHUB_STEP_SUMMARY"] = str(Path(self.temp.name) / "summary")
+        with self.assertRaises(pipeline.PipelineError) as error:
+            self.run_deploy()
+        self.assertEqual(str(error.exception), expected)
+        report = json.loads(self.report.read_text())
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["services"], {})
+        self.assertEqual(report["error"], expected)
+        self.assertEqual(self.client.calls, [
+            (f"/services/srv-{name}", None)
+            for name in (("backend",) if role == "backend" else ("backend", "frontend"))
+        ])
+        for text in (str(error.exception), self.report.read_text(),
+                     Path(self.env["GITHUB_STEP_SUMMARY"]).read_text()):
+            self.assertNotIn("metadata-secret-marker", text)
+            self.assertNotIn("untrusted-value-marker", text)
+            self.assertNotIn(self.env["RENDER_API_KEY"], text)
+
+    def test_preflight_each_field_missing_or_invalid_is_safe_and_never_posts(self):
+        for role in ("backend", "frontend"):
+            fields = {
+                "id": "configured service ID",
+                "type": "web_service",
+                "name": f"simple-sudoku-{role}",
+                "serviceDetails": "object",
+                "serviceDetails.url": pipeline.ORIGINS[role],
+                "serviceDetails.runtime": "image",
+                "autoDeploy": "no",
+                "imagePath": f"{pipeline.REGISTRY}{role}:<tag> or "
+                             f"{pipeline.REGISTRY}{role}@sha256:<64 lowercase hex digits>",
+            }
+            for field, expectation in fields.items():
+                for missing, value in (
+                    (True, None), (False, None), (False, ""),
+                    (False, "untrusted-value-marker\nBearer offline-test-only"),
+                    (False, ["untrusted-value-marker"]),
+                ):
+                    with self.subTest(role=role, field=field, missing=missing, value=value):
+                        diagnostic_field = field
+                        if field == "serviceDetails.runtime" and missing:
+                            diagnostic_field += " (fallback serviceDetails.env)"
+                        expected = (
+                            f"CD BLOCKED: {role} service {diagnostic_field} "
+                            f"{'missing' if missing else 'invalid'}; expected {expectation}."
+                        )
+                        self.assert_preflight_diagnostic(
+                            role, field, expected, value, missing)
+
+    def test_preflight_runtime_fallback_and_precedence_unchanged(self):
+        for role in ("backend", "frontend"):
+            for runtime_present, runtime, env in (
+                (False, None, "image"), (True, "image", "docker"),
+                (False, None, "docker"), (False, None, None),
+                (True, None, "image"), (True, "docker", "image"),
+            ):
+                with self.subTest(role=role, runtime_present=runtime_present,
+                                  runtime=runtime, env=env):
+                    self.client = FakeRender()
+                    original = self.client.request
+
+                    def changed(path, body=None):
+                        result = original(path, body)
+                        if path == f"/services/srv-{role}":
+                            details = result["serviceDetails"]
+                            details["env"] = env
+                            if runtime_present:
+                                details["runtime"] = runtime
+                            else:
+                                del details["runtime"]
+                        return result
+
+                    self.client.request = changed
+                    if (runtime if runtime_present else env) == "image":
+                        self.assertEqual(self.run_deploy()["status"], "verified")
+                    else:
+                        key = "runtime" if runtime_present else "env"
+                        expected = (f"CD BLOCKED: {role} service serviceDetails.{key} "
+                                    "invalid; expected image.")
+                        with self.assertRaises(pipeline.PipelineError) as error:
+                            self.run_deploy()
+                        self.assertEqual(str(error.exception), expected)
+                        self.assertFalse(any(isinstance(body, dict)
+                                             for _, body in self.client.calls))
+
+    def test_preflight_image_and_autodeploy_checks_remain_strict(self):
+        for role in ("backend", "frontend"):
+            for field, expectation, values in (
+                ("autoDeploy", "no", ("yes", "off", False, 0, "NO",
+                                     {"autoDeployTrigger": "off"})),
+                ("imagePath", f"{pipeline.REGISTRY}{role}:<tag> or "
+                              f"{pipeline.REGISTRY}{role}@sha256:<64 lowercase hex digits>",
+                 (f"{pipeline.REGISTRY}{role}", f"{pipeline.REGISTRY}{role}:",
+                  f"{pipeline.REGISTRY}{role}:tag/extra",
+                  f"{pipeline.REGISTRY}{role}@sha256:bad",
+                  f"{pipeline.REGISTRY}{role}-other:tag")),
+            ):
+                for value in values:
+                    with self.subTest(role=role, field=field, value=value):
+                        self.assert_preflight_diagnostic(
+                            role, field,
+                            f"CD BLOCKED: {role} service {field} invalid; expected {expectation}.",
+                            value)
+        # A newer SDK field alone is not evidence that the required legacy
+        # response field is present/disabled. No schema compatibility is inferred.
+        self.client = FakeRender()
+        original = self.client.request
+
+        def trigger_only(path, body=None):
+            result = original(path, body)
+            result.pop("autoDeploy", None)
+            result["autoDeployTrigger"] = "off"
+            return result
+
+        self.client.request = trigger_only
+        with self.assertRaisesRegex(pipeline.PipelineError, "autoDeploy missing; expected no"):
+            self.run_deploy()
+        self.assertFalse(any(isinstance(body, dict) for _, body in self.client.calls))
+
+    def test_preflight_accepts_existing_tag_and_digest_image_formats(self):
+        for suffix in (":release_1.2-3", "@sha256:" + "d" * 64):
+            with self.subTest(suffix=suffix):
+                self.client = FakeRender()
+                original = self.client.request
+
+                def changed(path, body=None):
+                    result = original(path, body)
+                    if "/deploys" not in path:
+                        role = "backend" if "srv-backend" in path else "frontend"
+                        result["imagePath"] = f"{pipeline.REGISTRY}{role}{suffix}"
+                    return result
+
+                self.client.request = changed
+                self.assertEqual(self.run_deploy()["status"], "verified")
+
+    def test_preflight_cli_diagnostic_redacts_runtime_metadata(self):
+        original = self.client.request
+
+        def changed(path, body=None):
+            result = original(path, body)
+            result["serviceDetails"]["runtime"] = {
+                "credential": "untrusted-value-marker\nBearer offline-test-only"
+            }
+            return result
+
+        self.client.request = changed
+        stdout, stderr = io.StringIO(), io.StringIO()
+        real_deploy = pipeline.deploy
+        with patch.dict("os.environ", self.env, clear=True), \
+                patch("sys.argv", ["pipeline.py", "deploy"]), \
+                patch.object(pipeline, "deploy", side_effect=lambda env: real_deploy(
+                    env, self.report, self.client, self.clock.sleep, self.clock)), \
+                patch("urllib.request.OpenerDirector.open",
+                      side_effect=AssertionError("network forbidden")), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            self.assertEqual(pipeline.main(), 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(),
+                         "CD BLOCKED: backend service serviceDetails.runtime invalid; "
+                         "expected image.\n")
+        self.assertNotIn("untrusted-value-marker", self.report.read_text())
+        self.assertFalse(any(isinstance(body, dict) for _, body in self.client.calls))
 
     def test_pending_then_live(self):
         original = self.client.request
