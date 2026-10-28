@@ -119,3 +119,44 @@ by this cleanup. Record real links and exact image/check/commit identities later
 Do not close #20 based on local tests. The attributed approval/start report was
 initially UNPOSTED; a later DEV comment is evidence only if its returned URL is
 actually confirmed. No new issue or remote configuration change is needed here.
+
+## Run record: 2026-10-28
+
+Factual record of the first live exercise. Evidence:
+[issue #20 comment](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6471484822).
+See the [flow overview](../architecture.md#how-the-flow-works-overview).
+
+- **Fault.** Commit `83b6a67` on main introduced `body.borad`. Normal CI run
+  `40690929491` failed tests and skipped publish/deploy. The fault backend image
+  was built manually outside CI,
+  `ghcr.io/sadevaraj/simple-sudoku-backend@sha256:c7481028ecc9acabe0f21e1e310fbbe74283a4c2f3f3ac868c8b559c372f9180`,
+  and deployed by the owner on Render.
+- **Alert delivery.** The first Grafana delivery got 422 because rule labels
+  `operation`/`service`/`severity` were missing; they were added. Because each
+  alert identity is single-use (30-minute deduplication), retriggers needed a
+  changed `attempt` label on the rule.
+- **Repair run `40695042152`: blocked.** The CLI `--version` output prints an
+  extra update-hint line; fixed by human maintenance commit `5f8d461`.
+- **Repair run `40696710810`: blocked.** The CLI native addon could not load
+  from the `noexec` `/tmp` tmpfs; fixed by human maintenance commit `4836478`
+  (tmpfs `exec`, keeping read-only root, `nosuid`, `nodev`).
+- **Repair run `40697952537`.** `authorization`, `candidate` and `verify`
+  succeeded; branch `repair/alert-54d28cd5442c` was pushed with the one-line
+  fix. `gh pr create` failed (error text not captured; suspected missing
+  Pull requests write permission on `ALERT_REPAIR_PR_TOKEN`, unverified).
+- **Merge and deploy.** The owner opened PR #22 manually from the agent branch;
+  PR CI `40701750404` passed; the owner merged it as merge commit `12e1857`.
+  Main run `40701958830` was cancelled, then re-run: tests, publish and
+  deploy-development succeeded; `/api/health` returned 200; the owner confirmed
+  Save works.
+- **Not demonstrated.** Automatic PR creation and auto-merge (repository
+  `allow_auto_merge` is false). Obsolete `DEMO_*` variables and the
+  `DEMO_CONTROL_TOKEN` secret were deleted afterwards.
+
+### Operator tips learned
+
+- Grafana rule labels must match the receiver contract exactly.
+- To retrigger, change a rule label (for example `attempt`); the same alert
+  identity is not accepted again within 30 minutes.
+- The PR run only runs tests; publish/deploy happen on main after merge.
+- Do not cancel the main run after merge.

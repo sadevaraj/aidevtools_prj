@@ -127,6 +127,42 @@ criteria #20-R1..R8. This supersedes operational fault/demo controls and
 manual-only merge from earlier #18/#19/#20 designs, not SUD-01..14. Earlier
 approvals/evidence remain historical in the issues and Git history.
 
+### How the flow works (overview)
+
+Descriptive summary only; the numbered requirements below and the
+[replacement specification](specs/issue-20-replacement.md) remain authoritative.
+
+```mermaid
+flowchart TD
+    A["User clicks Save<br/>(browser)"] --> B["Backend returns 500 and exports<br/>sudoku_save_requests_total{outcome=server_error}<br/>(Render)"]
+    B --> C["Rule SAVE-ERROR LOG fires<br/>(Grafana Cloud)"]
+    C --> D["Contact point 'Sudoku Render receiver'<br/>POSTs authenticated webhook<br/>(Grafana Cloud)"]
+    D --> E["/api/alerts/grafana validates, stores,<br/>deduplicates 30 min, dispatches repair<br/>(Render)"]
+    E --> F["pipeline.yml mode=repair:<br/>authorization → candidate → verify → publish-pr<br/>(GitHub Actions)"]
+    F --> G["Repair PR merged after PR checks<br/>(GitHub)"]
+    G --> H["main pipeline: tests → publish → deploy<br/>(GitHub Actions → Render)"]
+```
+
+1. **Save fails (Render).** A user clicks Save; the backend answers 500 and
+   counts it in `sudoku_save_requests_total{outcome="server_error"}`, which is
+   exported to Grafana Cloud.
+2. **Alert fires (Grafana Cloud).** The rule **SAVE-ERROR LOG** fires and the
+   contact point **Sudoku Render receiver** POSTs an authenticated webhook to
+   `https://simple-sudoku-backend.onrender.com/api/alerts/grafana`.
+3. **Receiver checks and records (Render).** The backend accepts only one firing
+   alert with labels `alertname`, `operation=save_game`, `service=sudoku-api`,
+   `severity=warning` and a positive value. It stores a deduplicated incident
+   (30 minutes) and dispatches `pipeline.yml` in `repair` mode.
+4. **Authorization and candidate (GitHub Actions).** The `authorization` job
+   claims the incident via signed OIDC at `/api/alerts/repair/claim` (single use
+   per alert). The `candidate` job runs the pinned Copilot CLI
+   `Prj_Coordinator` in an isolated container to produce the fix.
+5. **Verify and publish (GitHub Actions).** `verify` runs the full tests plus
+   independent QA and Reviewer sessions; `publish-pr` opens the repair PR and
+   requests auto-merge after the ordinary PR checks.
+6. **Merge and deploy (GitHub Actions → Render).** After merge, the normal main
+   pipeline runs tests → publish → deploy to Render.
+
 The healthy save handler is restored as maintenance. Migrations 0001..0004,
 existing historical control tables/columns and account/game data remain intact;
 obsolete demo model mappings are no longer used. No new schema migration,
