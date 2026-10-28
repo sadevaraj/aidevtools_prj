@@ -465,7 +465,7 @@ def save_game(
             if game.status == "completed":
                 raise HTTPException(status_code=409, detail="Completed games are read-only.")
             puzzle = db.get(Puzzle, game.puzzle_id)
-            game.board = _validated_board(body.board, puzzle.clues)
+            game.board = _validated_board(body.borad, puzzle.clues)
             game.last_saved_at = text("CURRENT_TIMESTAMP")
             db.commit()
             db.refresh(game)
