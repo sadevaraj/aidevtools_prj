@@ -369,13 +369,29 @@ def test_candidate_patch_rejects_escape_noop_deletion_binary_or_oversize(patch):
         repair_runner.validate_patch(patch, TRUSTED_TEST_SOURCE)
 
 
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        ("GitHub Copilot CLI 1.0.103.\n", True),
+        ("GitHub Copilot CLI 1.0.103.\nRun 'copilot update' to check for updates.\n", True),
+        ("GitHub Copilot CLI 1.0.104.\nRun 'copilot update' to check for updates.\n", False),
+        ("Run 'copilot update' to check for updates.\nGitHub Copilot CLI 1.0.103.\n", False),
+        ("", False),
+    ],
+)
+def test_pinned_cli_version_accepts_real_update_hint_only_for_pinned_version(output, expected):
+    assert repair_runner.is_pinned_cli_version(output) is expected
+
+
 def test_mocked_cli_boundary_uses_explicit_agent_and_never_runs_model(tmp_path):
     calls = []
 
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
         if command[-1] == "--version":
-            return SimpleNamespace(stdout="GitHub Copilot CLI 1.0.103.\n")
+            return SimpleNamespace(
+                stdout="GitHub Copilot CLI 1.0.103.\nRun 'copilot update' to check for updates.\n"
+            )
         if command[0] == "docker":
             return SimpleNamespace(stdout="")
         if command[0] == "git" and "status" in command:

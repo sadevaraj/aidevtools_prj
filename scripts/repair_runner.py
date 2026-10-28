@@ -344,6 +344,12 @@ def copilot_command(prompt: str) -> list[str]:
     ]
 
 
+def is_pinned_cli_version(output: str) -> bool:
+    # The CLI appends an update hint after the version line.
+    lines = output.strip().splitlines()
+    return bool(lines) and lines[0].strip() == f"GitHub Copilot CLI {CLI_VERSION}."
+
+
 def isolated_copilot_command(
     trusted_root: Path, workspace: Path, arguments: list[str], *, readonly: bool = False
 ) -> list[str]:
@@ -508,8 +514,8 @@ def collect_role_evidence(
         ,
         cwd=trusted_root, env=_without_runner_credentials(env),
         capture_output=True, text=True, timeout=10, check=True,
-    ).stdout.strip()
-    if version != f"GitHub Copilot CLI {CLI_VERSION}.":
+    ).stdout
+    if not is_pinned_cli_version(version):
         raise RepairGateError("The Copilot CLI version is not the pinned version.")
 
     diff_text = patch.decode("utf-8")
@@ -876,8 +882,8 @@ def run_candidate(
         ,
         cwd=root, env=child_environment,
         capture_output=True, text=True, timeout=10, check=True,
-    ).stdout.strip()
-    if version != f"GitHub Copilot CLI {CLI_VERSION}.":
+    ).stdout
+    if not is_pinned_cli_version(version):
         raise RepairGateError("The Copilot CLI version is not the pinned version.")
     # Give the short-lived token only to the Copilot process, never to tests or
     # candidate application code in the later verification job.
