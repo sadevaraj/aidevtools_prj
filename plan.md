@@ -1,224 +1,46 @@
-# Simple Sudoku: Approved Alert-Triggered Repair Plan
+# Simple Sudoku: Approved Simplified Recovery Plan
 
-## Status and Sources of Truth
+## Current plan — user-approved replacement, 28 October 2026
 
-Updated 27 October 2026 under issue #19 after explicit user approval in chat
-(agent-recorded evidence, not a human-authored GitHub comment): “Approve
-development-only authenticated alert receiver, bounded repair workflow, tests
-and documentation; update the plan/architecture and GitHub tracking
-accordingly.” Authority: “Agent diagnoses and opens a tested fix PR; I approve
-merge and deployment.”
+At **2026-10-28T09:39:20Z**, the user said **“approved do it”** to the exact
+cleanup/replacement recorded in [issue #20 replacement specification](docs/specs/issue-20-replacement.md).
+This agent-attributed chat approval supersedes the earlier operational #19/#20
+plans. Their obsolete recovery/demo procedures are removed, not retained as an
+archival how-to. No GitHub approval-comment URL is invented.
 
-The approved [product specification](docs/specs/product.md),
-[architecture](docs/architecture.md), [delivery process](docs/process.md), and
-[specification-change guard](.github/agents/guards/specification-changes.md)
-remain authoritative. This authorizes only the bounded development scope below.
-Issue #18's current body also includes the subsequently approved bounded repair
-path. Its original notification-only scope is historical, not its current
-criteria. The Sudoku product specification and rules do not change.
+1. Restore healthy saving locally as maintenance. Remove obsolete fault/demo
+   paths; preserve migrations, account/game data, SUD-01..14, normal tests/build/
+   publish and existing opt-in Render development deployment.
+2. Keep the authenticated SAVE-ERROR LOG webhook, durable dedup/outbox, existing
+   repair kill switch and exact one-time OIDC run/attempt claim.
+3. Keep one actual bounded isolated Copilot candidate attempt, no smoke/probe/
+   retries or paid enablement. Unsupported faults stop, never a scripted fix.
+4. Require full exact-candidate tests, exact persistence/reopen and independent
+   same-candidate QA/Reviewer evidence before isolated PR publication.
+5. Request automatic merge only AFTER ordinary PR checks with exact-head match;
+   never bypass protection/permissions or modify remote settings. Existing main
+   pipeline deploys after merge. Missing technical permissions/settings block.
+6. Require operator healthy restoration within 15 minutes from any future
+   separately confirmed fault deployment. Current cleanup does no live action.
+   The coordinator may commit/push/deploy only the healthy version after renewed
+   independent QA/review PASS; no fault deployment/provider/dispatch is approved.
 
-### Current #20 approval (28 October 2026 00:22 +01:00)
+See the current [architecture](docs/architecture.md) and
+[runbook](docs/runbooks/development-save-demo.md). Existing source/image
+provenance and live evidence limitations are explicit there. This is not a
+claim of live recovery or completion; #20 stays open.
 
-[Latest #20 approval evidence](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6456057621)
-records the user's “i want grafana triggered fix” then “yes” to:
-**deliberate-error commit on MAIN → approved development fault deployment →
-failed Save → Grafana alert → tested Copilot fix PR MAIN → manual owner merge →
-normal deploy**. This supersedes both the earlier branch-based design and
-withdrawn CI-only alternative, not evidence that either was completed.
-Only LOCAL implementation/tests/docs are authorized now. The historical #19
-plan below is retained as history; this current section takes precedence.
-The [28 October ~08:49 owner supplement](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6463679181)
-further permits explicit `REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED=true`
-only in the durable development-control-required repair path, without claiming
-unknown entitlement/quota as confirmed. Mandatory no-overage authorization and
-provider controls remain; flags do not enforce billing or guarantee dollar safety.
-No paid enablement, provider smoke/eligibility call, retry or model loop is approved.
-The real Grafana repair is the first model attempt (candidate plus required
-independent QA/Reviewer sessions); 15 minutes from fault deployment, then stop/
-revoke/restore compatible healthy images on failure or timeout. All other unknowns
-still stop. Changed tooling requires NEW reviewed healthy T / exact child F,
-recomputed pins/tree/images/server authorization; never patch old F or reuse
-the old T pin. The runbook retains old healthy recovery digests and evidence.
-F must directly follow healthy immutable T on MAIN and change only `body.board`
-to `body.borad` in save_game. Ordinary CI still fails on F. Product/guards and
-original tests are not weakened.
+---
 
-Only existing `pipeline.yml` is used: normal PR/main tests → successful main
-publication → gated development deploy, owner `mode=fault`, and Grafana
-`mode=repair`. No permanent demo branch/environment or extra workflow exists.
-The narrow fault dispatch proves healthy T and the
-authenticated fault/rollback/repaired persistence fixture using disposable
-PostgreSQL. Unprivileged builds produce paired image archives; trusted jobs
-check provenance and publish immutable digests without executing candidate
-scripts. Before fault deployment, a separate owner credential arms the healthy
-server with T/F, repaired tree, fixed development targets, both fault/rollback
-digests, rollback evidence, and an expiring window. Deployment rechecks the
-currently healthy rollback pair.
+## Future fault exercise — BLOCKED
 
-The receiver/outbox dispatches the same MAIN pipeline in repair mode; failed CI
-never substitutes for Grafana. OIDC binds the pipeline at immutable F (identical
-to T except the typo); T tooling and tests are owner-pinned before checkout.
-The server consumes one durable run/attempt claim.
-Candidate Copilot runs in a constrained container without host home, Docker
-socket, OIDC, DB, Render, or PR credentials. T instructions are read-only.
-Only the exact repair is accepted. Its tree must equal T's tree before the
-**trusted** full test harness runs. Two fresh QA/Reviewer sessions and their
-actual test receipt bind the same F, patch hash, tree, run, and attempt before
-credentialed PR publication. The PR base must still be F. The owner reviews
-and manually merges to MAIN; ordinary successful main tests, publication and
-owner-enabled development delivery follow. There is no automatic merge or
-MAIN write by agents. Unknown faults stop; no provider runs in local tests.
-
-Implementation -> independent Prj_QA -> Prj_Reviewer is still mandatory on the
-same working diff and baseline. Local checks do **not** close #20's live gates.
-Follow [the concrete owner runbook](docs/runbooks/development-save-demo.md).
-Issues #12/#13, healthy rollback proof, credential permissions, no-overage controls,
-and the explicit test window remain owner/live prerequisites. CLI entitlement/
-available quota require verification or the exact approved access-risk alternative
-above. Unknown/true flags and token presence alone are not evidence.
-The token reportedly placed in a repository variable is NOT a valid secret:
-owner rotation, removal of that variable and private recreation as the proper
-secret are required before live work; this task neither reads nor changes it.
-Migrations 0002/0003 remain intact; 0004 adapts authorization to MAIN without
-relabeling historical approvals or changing player data. No live DB operation.
-Stop/revoke/rollback on uncertainty or timeout. No production, paid enablement,
-business-data rewrites, provider calls, remote branches, publication, or
-deployment occurs in this implementation task.
-
-## Goal and Fixed Flow
-
-Implement a disabled-by-default authenticated receiver on the existing Sudoku
-backend, a durable bounded outbox, and an executable but owner-gated Copilot
-workflow that can diagnose one approved save-handler typo and open a tested PR.
-The backend receiver cannot accept an alert while that backend is down.
-The notification destination is the backend's authenticated webhook receiver.
-
-```text
-Grafana save-failure alert
-  -> authenticated webhook receiver
-  -> restricted GitHub Actions repair workflow
-  -> existing Prj_Coordinator CLI agent and configured DEV/QA/Reviewer agents
-  -> isolated candidate patch -> unprivileged tests -> separate PR publication
-  -> human-approved merge -> existing pipeline only after merge
-```
-
-No automatic merge, deployment, rollback, general incident repair, or production
-target is in scope. Issues #12 and #13 remain prerequisites for a later deployed
-demonstration, not blockers to disabled local implementation.
-
-## Phase 1: Implement the Approved Isolated Experiment
-
-- Use only the exact deliberately isolated save-handler typo `body.board` →
-  `body.borad` as a test-only fault. This is not an observed existing defect.
-- Prove an authenticated save returns HTTP 500 and rolls back in a temporary
-  checkout, then prove a repaired save persists. Never commit broken source or
-  inject a live fault.
-- Keep owner-approved human control: the agent may diagnose and open a tested
-  PR; only the owner approves merge and deployment.
-- Do not transmit repository data to a provider or execute Copilot in this task.
-  Future runtime use is separately gated on explicit privacy, Free entitlement,
-  quota, and no-overage owner confirmation.
-
-**Gate:** this exact approval and its evidence are recorded in issue #19.
-
-## Phase 2: Implement the Backend Receiver and Durable Outbox
-
-The approved receiver runs in the existing development Sudoku backend, not a
-separate service. Document that it cannot receive alerts while the backend is
-down.
-
-- Authenticate Grafana requests and validate payload size, schema, approved
-  alert identity, firing state, and development target.
-- Reject unrelated and query-error alerts. Treat webhook content as untrusted
-  data, never as commands, repository names, arbitrary URLs, or executable refs.
-- Map accepted incidents only to the fixed repository, workflow, and `main`
-  ref. Payload fields never select targets, commands, URLs, or permissions.
-- Persist a hashed incident ID before acknowledging. Enforce replay/concurrent
-  deduplication, 30-minute TTL/cooldown, global rate cap, lease, three attempts,
-  bounded retry, and default-off kill switch using PostgreSQL.
-- Expect GitHub to accept a workflow dispatch even when the response is lost.
-  Bind a single durable incident claim to the verified GitHub OIDC repository,
-  workflow, run ID, and attempt before any candidate invocation. Check the
-  server-stored incident expiry and prior outbox dispatch attempt; do not trust
-  a manually supplied future expiry or accept fabricated/replayed IDs.
-- Keep Grafana receiver auth and workflow-dispatch credentials separate. The
-  owner supplies and stores private values later; this task creates no token.
-- Record safe receipt and dispatch evidence without logging authentication
-  headers or the complete payload.
-
-**Gate:** PostgreSQL tests cover unauthorized/malformed/oversize requests,
-duplicates/concurrency, retry/expiry/rate behavior, and redaction.
-
-## Phase 3: Add the Owner-Gated Copilot Runtime
-
-Add a separate dispatchable workflow; do not bypass or replace the
-[existing delivery pipeline](.github/workflows/pipeline.yml).
-
-- Pin Copilot CLI `1.0.103`, and invoke the actual existing
-  `Prj_Coordinator` definition using `--agent Prj_Coordinator --prompt ...`.
-  Check all current coordinator/DEV/QA/Reviewer IDs and allowed subagents from
-  `.github/agents/` before invoking; agent markdown does not auto-execute.
-- Use only the workflow's short-lived `GITHUB_TOKEN` with
-  `copilot-requests: write` for Copilot. No PAT is needed for CLI requests.
-- Scope `id-token: write` to the required jobs. Verify the signed token at the
-  backend's HTTPS claim endpoint; candidate, verification, and publication
-  stages all bind to the same consumed run/attempt. No database credential is
-  passed to the workflow.
-- Require owner variables for Free entitlement, actual available quota,
-  no-overage, provider privacy approval, and feature enablement. Quota is
-  unknown; no paid eligibility probe is allowed.
-- Enforce only the approved typo/test files and exact patch, with patch-size,
-  attempt, and execution-time limits. Unsupported incidents fail closed.
-- Keep candidate/testing jobs separate from PR publication. Candidate receives
-  no Render, live database, or PR token. A distinct owner-managed publication
-  credential triggers the PR pipeline; the main pipeline is reused only after
-  human-approved merge.
-
-**Gate:** offline mocks validate the CLI invocation boundary; no actual Copilot
-run or provider transmission occurs during this implementation.
-
-## Phase 4: Reuse Review and Delivery Gates
-
-Follow Coordinator -> Prj_Dev -> Prj_QA -> Prj_Reviewer, with one writer at a time,
-the approved baseline in handoffs, and failures returned through the coordinator.
-Require current-revision independent verification and review plus human merge
-approval initially. Preserve required checks and branch protection.
-
-After authorized merge, reuse main tests, paired immutable image publication,
-and gated Render development deployment. Reconcile actual deployed status and
-the prerequisites in issues #12 and #13 before enabling or relying on CD; this
-plan does not enable it. Record actual Actions results, image digests, and both
-Render deployment outcomes rather than inferring them from local tests.
-
-## Phase 5: Verify the Isolated Repair and Capture Course Evidence
-
-Reproduce only in a temporary isolated checkout:
-
-1. Authenticate and create a local test game.
-2. Introduce only the approved `body.borad` typo in the temporary source copy.
-3. Perform a valid save and prove HTTP 500, transaction rollback, and no false
-   success.
-4. Repair the typo, add/run the regression, and prove a save persists.
-5. Run configured local tests and inspect the bounded patch.
-
-No live Grafana delivery, model call, Actions run, PR, merge, or deployed recovery
-is included. Local tests do not establish remote evidence.
-
-**Evidence chain for this task:** isolated authenticated failure and rollback ->
-repaired persisted save -> offline runner boundary tests. The later remote
-evidence chain must separately include real alert delivery, authorized workflow
-run, candidate tests, PR, independent QA/review, human-approved merge, and any
-separately approved deployment verification.
-
-## Failure Handling and Decisions for Later
-
-Stop on unsupported alerts, missing owner gates, exhausted attempts, quota,
-privacy or budget uncertainty, failed tests, or publication/deployment errors.
-Do not start a recursive repair loop. Owner credentials and remote settings
-remain unconfigured; live Copilot, Actions, Grafana, Render, and recovery are
-NOT VERIFIED. Issue #18's current criteria include the later bounded repair path. Issues #12
-and #13 remain later prerequisites to any separately approved deployed
-demonstration.
+An image-only `body.board` → `body.borad` fault with healthy repository `main`
+cannot by itself yield a corrective source PR: the source has no typo to repair.
+An empty or unsupported source patch must fail closed, not be presented as an
+AI repair. Any actual future fault exercise remains blocked pending a separate
+owner decision on source/image provenance and explicit confirmation. This plan
+does not invent a solution or authorize a fault deployment, provider call,
+dispatch or live change.
 
 ---
 
@@ -229,8 +51,8 @@ Problem Description and Product Specification are in
 [docs/specs/product.md](docs/specs/product.md), with an overview in
 [README.md](README.md).
 All log-analyser requirements and delivery steps below are historical reference,
-not the current implementation plan. The proposed Sudoku repair plan above is
-for future consideration and does not approve the historical requirements below.
+not the current implementation plan. The approved Sudoku replacement above
+does not approve the historical requirements below.
 
 ---
 

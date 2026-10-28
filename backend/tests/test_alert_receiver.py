@@ -49,7 +49,7 @@ def alert_payload(fingerprint="0123456789abcdef0123456789abcdef", **overrides):
         "status": "firing",
         "fingerprint": fingerprint,
         "labels": {
-            "alertname": "Sudoku save HTTP 5xx",
+            "alertname": "SAVE-ERROR LOG",
             "service": "sudoku-api",
             "operation": "save_game",
             "severity": "warning",
@@ -440,12 +440,15 @@ def test_claim_is_one_time_expiry_from_database_and_bound_to_run_attempt(
         stored_expiry = db.get(AlertIncident, incident_id).expires_at
     first = _workflow_claim(configured_receiver, incident_id, "run-one")
     assert first.status_code == 200
+    deadline = first.json()["deadline"]
+    assert datetime.now(timezone.utc) < datetime.fromisoformat(deadline) <= datetime.now(timezone.utc) + timedelta(minutes=15)
     assert first.json() == {
         "authorized": True,
         "expires_at": stored_expiry.isoformat(),
         "incident_id": incident_id,
         "run_id": "1234",
         "run_attempt": "1",
+        "deadline": deadline,
     }
     replay_same_run = _workflow_claim(
         configured_receiver, incident_id, "run-one", action="claim"
@@ -486,6 +489,24 @@ def test_concurrent_workflow_claims_for_one_incident_have_one_winner(
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(claim, (101, 202)))
     assert sorted(results) == [200, 409]
+
+
+def test_fifteen_minute_claim_deadline_stops_execution_without_deleting_dedup_record(
+    configured_receiver, monkeypatch
+):
+    incident_id = _prepare_dispatchable_incident()
+    monkeypatch.setattr(
+        api_module, "verify_github_oidc_token",
+        lambda _token: alerting.WorkflowRun(run_id=1234, run_attempt=1),
+    )
+    with SessionLocal.begin() as db:
+        incident = db.get(AlertIncident, incident_id)
+        incident.execution_run_id = 1234
+        incident.execution_run_attempt = 1
+        incident.execution_claimed_at = datetime.now(timezone.utc) - timedelta(minutes=16)
+    assert _workflow_claim(configured_receiver, incident_id, "offline-only", action="verify").status_code == 409
+    with SessionLocal() as db:
+        assert db.get(AlertIncident, incident_id) is not None
 
 
 def test_expired_incident_and_invalid_workflow_authentication_fail_closed(

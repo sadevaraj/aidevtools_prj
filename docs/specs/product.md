@@ -4,6 +4,12 @@ This is the authoritative product specification. Changes to player-facing
 behaviour require user agreement before implementation. Keep related GitHub
 issues and acceptance criteria aligned with approved changes.
 
+Operational issue #20 uses the separately approved
+[simplified recovery replacement](issue-20-replacement.md), with attributed
+2026-10-28T09:39:20Z user approval. It changes no SUD requirement, player data,
+Sudoku rule or migration. The replacement supersedes operational demo/fault
+controls and manual-only repair merge, not SUD-01 through SUD-14 below.
+
 The [shared agent guard](../../.github/agents/guards/specification-changes.md)
 defines required human approval evidence and independent review.
 [GitHub enforcement status](../spec-governance.md) is tracked separately.

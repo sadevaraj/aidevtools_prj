@@ -132,102 +132,6 @@ def deployment_config(env):
     return ids
 
 
-def demo_deployment_config(env):
-    """Validate the separately owner-gated one-time fault deployment."""
-    require(
-        env.get("GITHUB_REPOSITORY") == "sadevaraj/aidevtools_prj"
-        and env.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-        and env.get("GITHUB_REF") == "refs/heads/main"
-        and env.get("GITHUB_WORKFLOW_REF")
-        == "sadevaraj/aidevtools_prj/.github/workflows/pipeline.yml@refs/heads/main"
-        and env.get("PIPELINE_MODE") == "fault",
-        "Demo deploy blocked: only the fixed owner-dispatched workflow on main is supported.",
-    )
-    for key in (
-        "DEMO_FAULT_DEPLOY_APPROVED",
-        "DEMO_ROLLBACK_PAIR_VERIFIED",
-        "DEMO_WINDOW_CONFIRMED",
-        "DEMO_IMAGE_PROVENANCE_VERIFIED",
-        "DEMO_TARGETS_CONFIRMED",
-    ):
-        require(env.get(key) == "true", "Demo deploy blocked: owner prerequisite is missing.")
-    evidence_url = env.get("DEMO_ROLLBACK_EVIDENCE_URL", "")
-    require(re.fullmatch(
-        r"https://github\.com/sadevaraj/aidevtools_prj/issues/13#issuecomment-[0-9]+",
-        evidence_url,
-    ), "Demo deploy blocked: current issue #13 rollback evidence is required.")
-    require(evidence_url == env.get("RENDER_DEV_VERIFICATION_URL"),
-            "Demo deploy blocked: deployment and rollback evidence must match.")
-    require(bool(env.get("RENDER_API_KEY")),
-            "Demo deploy blocked: owner-managed Render credential is unavailable.")
-    ids = {role: env.get(f"RENDER_DEV_{role.upper()}_SERVICE_ID", "") for role in ORIGINS}
-    require(all(re.fullmatch(r"srv-[a-z0-9]+", value) for value in ids.values()),
-            "Demo deploy blocked: exact Sudoku development service IDs are required.")
-    require(ids["backend"] != ids["frontend"],
-            "Demo deploy blocked: backend/frontend service IDs must differ.")
-    from demo_control import validate_image_pair, validate_window
-    validate_window(env.get("DEMO_EXPIRES_AT", ""))
-    validate_image_pair(
-        backend_digest=env.get("BACKEND_DIGEST", ""),
-        frontend_digest=env.get("FRONTEND_DIGEST", ""),
-        rollback_backend_digest=env.get("DEMO_ROLLBACK_BACKEND_DIGEST", ""),
-        rollback_frontend_digest=env.get("DEMO_ROLLBACK_FRONTEND_DIGEST", ""),
-        backend_target=ORIGINS["backend"], frontend_target=ORIGINS["frontend"],
-    )
-    for role in ORIGINS:
-        require(re.fullmatch(r"sha256:[0-9a-f]{64}",
-                             env.get(f"DEMO_ROLLBACK_{role.upper()}_DIGEST", "")),
-                "Demo deploy blocked: exact healthy rollback image digests are required.")
-    return ids
-
-
-def deploy_demo_fault(env, report_path="demo-deployment-result.json", client=None,
-                      sleep=time.sleep, clock=time.monotonic):
-    """Deploy the exact owner-approved fault pair only over the verified rollback pair."""
-    report = {"status": "blocked", "services": {}, "atomic": False}
-    try:
-        pair = image_pair(env)
-        report["pair"] = pair
-        require(pair["complete"], "Demo deploy blocked: both immutable image digests are required.")
-        ids = demo_deployment_config(env)
-        client = client or Render(env["RENDER_API_KEY"])
-        preflight(client, ids)
-        for role, service_id in ids.items():
-            latest = client.request(f"/services/{service_id}/deploys?limit=1")
-            require(isinstance(latest, list) and len(latest) == 1
-                    and isinstance(latest[0], dict),
-                    "Demo deploy blocked: latest deployment metadata is unavailable.")
-            current = latest[0].get("deploy")
-            require(isinstance(current, dict) and current.get("status") == "live"
-                    and isinstance(current.get("image"), dict)
-                    and current["image"].get("sha")
-                    == env[f"DEMO_ROLLBACK_{role.upper()}_DIGEST"],
-                    "Demo deploy blocked: currently deployed healthy rollback pair does not match.")
-        require(client.health(ORIGINS["backend"] + "/api/health", True)
-                and client.health(ORIGINS["frontend"] + "/", False),
-                "Demo deploy blocked: current rollback services are not healthy.")
-        # Reuse the established exact-digest deploy/health procedure only after
-        # the distinct fault-path gates and rollback preflight succeed.
-        normal_environment = {
-            **env,
-            "GITHUB_EVENT_NAME": "push",
-            "GITHUB_REF": "refs/heads/main",
-            "RENDER_DEV_CD_ENABLED": "true",
-            "RENDER_DEV_VERIFIED": "true",
-        }
-        report["status"] = "delegated_to_exact_digest_deployer"
-        return deploy(
-            normal_environment,
-            report_path=report_path,
-            client=client,
-            sleep=sleep,
-            clock=clock,
-        )
-    finally:
-        if report["status"] == "blocked":
-            write_json(report_path, report)
-
-
 def preflight(client, ids):
     # Check BOTH before mutating either. Fixed URLs allow only Sudoku development targets.
     for role, service_id in ids.items():
@@ -354,7 +258,7 @@ def main():
     env = os.environ
     try:
         require(len(sys.argv) == 2,
-                "Usage: python3 scripts/pipeline.py record-pair|deploy|demo-deploy")
+                "Usage: python3 scripts/pipeline.py record-pair|deploy")
         if sys.argv[1] == "record-pair":
             pair = image_pair(env)
             write_json("image-pair.json", pair)
@@ -364,8 +268,6 @@ def main():
             require(pair["complete"], "Publication incomplete; deployment blocked.")
         elif sys.argv[1] == "deploy":
             deploy(env)
-        elif sys.argv[1] == "demo-deploy":
-            deploy_demo_fault(env)
         else:
             raise PipelineError("Unknown pipeline command.")
     except PipelineError as error:

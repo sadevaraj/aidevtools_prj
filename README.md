@@ -169,8 +169,7 @@ The initial owner-approved sequence is:
    enables CD. No workflow execution or remote success is claimed here.
 
 The [pipeline runbook](docs/runbooks/pipeline.md) documents PR/main tests,
-main paired SHA/digest publication with `GITHUB_TOKEN` (plus the default-off,
-exact #20 owner-dispatched known-fault development exception), exact-image Render
+main paired SHA/digest publication with `GITHUB_TOKEN`, exact-image Render
 deployment, owner variables/environment secret setup, failure notifications,
 and operator fallback. Both CD flags default off; no Render credentials are
 available to this implementation. GitHub Actions failure notifications require
@@ -288,67 +287,37 @@ The [delivery process](docs/process.md), [agent team](.github/agents/README.md),
 and [shared specification guard](.github/agents/guards/specification-changes.md)
 describe how issues, DEV evidence, independent QA, and review are handled.
 
-## Approved alert-to-Copilot development demo
+## Approved bounded save recovery (#20 replacement)
 
-The current approved scope is tracked by
-[issue #20](https://github.com/sadevaraj/aidevtools_prj/issues/20), extending
-the bounded receiver/repair implementation in
-[issue #19](https://github.com/sadevaraj/aidevtools_prj/issues/19) and the
-broader alert path in [issue #18](https://github.com/sadevaraj/aidevtools_prj/issues/18).
-Issue #18's current body includes the authenticated receiver and bounded
-repair-PR path; earlier notification-only notes in the repository are stale.
+The user approved the simplified replacement on **2026-10-28T09:39:20Z**:
+**“approved do it”**, referring to the exact cleanup/replacement plan recorded
+in the [replacement specification and issue criteria](docs/specs/issue-20-replacement.md).
+This is agent-attributed chat evidence, not a claimed human GitHub comment.
+It supersedes earlier fault-job/demo-control and manual-merge designs.
 
-The [latest agent-recorded approval, 28 October 2026 00:22 +01:00](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6456057621)
-supersedes the earlier branch-based and withdrawn CI-only alternatives:
-**owner commits the exact deliberate error on MAIN → explicitly approved
-development fault deployment → failed Save → Grafana alert → tested Copilot
-fix PR to MAIN → manual owner merge → normal deployment**. This task implements
-and tests the disabled configuration locally; it does not execute that chain.
+The healthy save handler is restored as maintenance, **not an AI repair**.
+Only the existing pipeline remains: normal PR/main tests → paired image
+publication → existing opt-in Render development deployment. No fault deployment
+job, demo arm/revoke endpoint, revision-pair prerequisite, or demo runtime setting
+remains. Migrations, account/game data and SUD-01..14 remain unchanged.
 
-Only `.github/workflows/pipeline.yml` is used. Ordinary PR/main tests and
-successful-main tests → publish → deploy gates remain unchanged; F's normal
-save tests stay red and publish nothing. Its separate `mode=fault` dispatch
-is a narrow owner-enabled exception, not a generic failed-test bypass. It binds
-healthy immutable `T` tooling/tests to current MAIN `F`, allowing only the
-one-commit, one-line `body.board` → `body.borad` delta. It proves T's full suite
-and the authenticated 500/unchanged-board/repaired persistence fixture on
-disposable PostgreSQL, builds without publisher/deployer credentials, publishes
-prebuilt immutable images, arms the healthy server and verifies the rollback
-pair before development deployment. No permanent demo branch/environment exists.
+Grafana's actual **SAVE-ERROR LOG** rule should deliver an authenticated webhook
+to the default-off development receiver. Durable deduplication, bounded dispatch
+and a signed, one-time OIDC run/attempt claim remain. One bounded actual Copilot
+attempt produces only the approved save-handler typo fix. Full tests on that
+exact candidate and distinct independent QA/Reviewer evidence precede publication.
+The isolated publisher requests **automatic merge only after ordinary PR checks**,
+without bypassing branch protection or changing permissions/settings. A merge
+then uses the normal pipeline. Missing permissions/settings fail closed.
 
-Grafana's authenticated receiver/outbox dispatches `mode=repair` on MAIN with
-only an opaque incident and server expiry. Signed OIDC must identify this exact
-pipeline at F; durable T/F, digests, fixed targets, expiry and one-time run/attempt
-claims fail closed. Candidate Copilot uses T's pinned regression and tools with
-no live DB, Render, OIDC or writer token. Full trusted tests plus independent
-current-candidate QA/Reviewer evidence precede an isolated publisher that never
-executes candidate code. Only `body.borad` → `body.board` is accepted; unsupported
-faults stop. The temporary PR branch targets unchanged faulty MAIN F; only the
-owner merges. The resulting main push uses ordinary successful CI/CD, not an
-exception. No production service or completed-game data is a target.
-
-Every feature and remote capability remains default-off. No live alert, Copilot
-provider request, Actions run, GHCR publication, Render deployment, rollback, or
-recovery was executed for this implementation. The user reports corrective
-deployment and login/save verification, but independent issue #13 verification,
-healthy rollback-pair evidence, valid PR credential, demo enablement, and
-Copilot entitlement/quota remain unverified. Issues #12 and #13 are open; do not
-enable or run the demo until the concrete prerequisites in
-[the owner-operated runbook](docs/runbooks/development-save-demo.md) are met.
-The token reportedly placed in a repository **variable** is not a valid secret:
-the owner must rotate it, remove that variable and recreate the proper secret
-privately before any live run. This task does not inspect or change it.
-
-The [28 October ~08:49 owner approval](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6463679181)
-adds an explicit default-off, durable-development-only unverified-access
-one-attempt alternative; it does not assert entitlement/quota or enforce billing.
-No-paid/no-overage controls and all other gates remain mandatory. No provider
-smoke or retry is approved: the real Grafana repair is the first model attempt,
-including required QA/Reviewer sessions, within 15 minutes from fault deployment;
-failure/timeout requires owner rollback. Changed tooling requires NEW reviewed
-healthy T / exact child fault F, pins, images and server authorization, not the
-old T/F pair. See the runbook for the exception and preserved compatible recovery
-images. Live execution is not authorized by this local patch; #12/#13 remain open.
+No live change, alert dispatch, provider/smoke call, workflow trigger, publication
+or deployment is performed by this cleanup. Entitlement remains unknown.
+No-paid/no-overage and transmission approvals remain mandatory; attestations
+are not billing enforcement. See the [operator runbook](docs/runbooks/development-save-demo.md)
+for the 15-minute fail-stop/healthy-restoration procedure and outstanding live
+evidence. The coordinator alone may commit/push/deploy the **healthy** version
+after current independent QA and review PASS; a future fault deployment needs
+separate later confirmation.
 
 Course brief:
 https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project

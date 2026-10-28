@@ -1,11 +1,11 @@
-variable "prometheus_datasource_uid" {
-  description = "UID of the Grafana Cloud Prometheus data source that receives the Sudoku save metric."
+variable "loki_datasource_uid" {
+  description = "UID of the Grafana Cloud Loki data source receiving the structured Sudoku save logs."
   type        = string
   nullable    = false
 
   validation {
-    condition     = length(trimspace(var.prometheus_datasource_uid)) > 0
-    error_message = "prometheus_datasource_uid must be a non-empty data-source UID."
+    condition     = length(trimspace(var.loki_datasource_uid)) > 0
+    error_message = "loki_datasource_uid must be a non-empty data-source UID."
   }
 }
 

@@ -1,66 +1,62 @@
-# Grafana Cloud save-failure alert
+# SAVE-ERROR LOG — authenticated development save alert
 
-This Terraform configuration manages only the approved Grafana Cloud alert rule
-and its webhook contact point. It does not add an application receiver, alter
-save handling, retry a save, or perform remediation. It is not applied by this
-repository's tests.
+The [#20 replacement](../../docs/specs/issue-20-replacement.md), approved in
+user chat at 2026-10-28T09:39:20Z (“approved do it”), replaces the old metric
+rule/demo-fault procedure with the **actual existing SAVE-ERROR LOG** alert
+and authenticated bounded repair path. No Grafana change is applied here.
 
-The rule queries the existing `sudoku_save_requests_total` counter for the
-`server_error` outcome and fires immediately when
-`sum(increase(sudoku_save_requests_total{outcome="server_error"}[5m])) > 0`.
-Expected 4xx outcomes have different bounded `outcome` values and are excluded.
-An empty result/no metric sample is `OK`, not a save-failure alert. The rule has
-only fixed service/operation/severity labels and fixed summary/description
-annotations. The contact point limits each request to one alert, sends only
-firing notifications, and uses the Grafana webhook integration's default
-certificate verification; it does not disable TLS verification.
+## Contract
 
-The webhook payload is the Grafana-managed webhook format. Its application-
-supplied labels and annotations are static metadata; the query is aggregated so
-per-request or per-game metric labels are not forwarded. No username, game or
-player identifier, board/request content, credential, cookie, session/CSRF
-value, raw header, or trace ID is added by this configuration. Grafana may add
-its own alert-state and rule metadata.
+`alert-contract.json` describes a five-minute Loki count of structured
+`service_name=sudoku-api`, `operation=save_game`, `outcome=server_error` logs.
+Only a positive finite `values.A`, one firing alert and these notification
+labels qualify:
 
-Grafana's notification template reference describes `Alert.Values` as the
-expression values used to evaluate a condition; query/condition rules may use
-additional expressions. Accordingly, the issue #19 development receiver
-requires `A` to be a positive finite JSON number and accepts other expression
-entries only when each has a non-empty bounded name and a finite numeric value.
-Additional values cannot replace `A` or relax the receiver's expected firing
-status, alert name, labels, single-alert, fingerprint, authentication, or replay
-checks. Error/no-data statuses and malformed or non-numeric expression values
-are rejected. This is based on Grafana's published payload documentation, not
-on a captured live notification payload; no live delivery is claimed.
+- `alertname=SAVE-ERROR LOG`
+- `operation=save_game`
+- `service=sudoku-api`
+- `severity=warning`
 
-- [Grafana notification template reference](https://grafana.com/docs/grafana/latest/alerting/configure-notifications/template-notifications/reference/#alert)
-- [Grafana alert queries and conditions](https://grafana.com/docs/grafana/latest/alerting/fundamentals/alert-rules/queries-conditions/)
+Save 4xx rejections, unrelated operation failures, exporter diagnostics, no-data,
+query errors and resolved notifications do not trigger repair. Rule evaluation
+is every 30 seconds with no extra pending period. No-data is OK; query errors
+are Error but fail the receiver's strict positive save-alert validation.
 
-## Owner-operated setup
+The contact point uses HTTPS POST, Bearer authorization, one alert per message
+and no resolve delivery. The receiver uses its existing private credential;
+normal player authentication/CSRF is not repurposed for this webhook.
 
-No live Grafana or webhook configuration is included here. When the owner
-chooses to apply this configuration, supply the existing Grafana Cloud stack
-URL and a narrowly scoped Grafana API token through the provider's
-`GRAFANA_URL` and `GRAFANA_AUTH` environment variables. Also supply the actual
-Prometheus data-source UID and private HTTPS endpoint/token through
-`TF_VAR_prometheus_datasource_uid`, `TF_VAR_webhook_url`, and
-`TF_VAR_webhook_bearer_token`. The endpoint must be HTTPS, must not contain URL
-user-info or a fragment, and both endpoint and token are marked sensitive.
-Configuration validation errors use generic messages rather than echoing their
-values.
+## Owner-operated setup (not executed)
 
-Grafana Cloud does not support Grafana's local file-provisioning mechanism for
-alert resources; this configuration uses Grafana's Terraform provider and
-Grafana-managed alerting API. The provider needs a Grafana Cloud API token and
-the Grafana-managed notification-settings capability supported by the target
-stack. Before any owner-operated apply, use a protected state backend: Terraform
-state can contain contact-point secrets even when inputs are marked sensitive.
-Never commit state, plans, credentials, or `.tfvars` files. Do not apply against
-an unverified target stack.
+Use the **existing** Grafana SAVE-ERROR LOG rule, not a second duplicate rule.
+Inspect/export its actual UID and data source privately; import/adapt the
+Terraform resource to that UID before applying an authorized update. The UID
+in source is a configuration identifier, not evidence that it is the live UID.
+The existing Loki source must expose the service label and structured JSON
+fields above; independently confirm the actual exported log schema.
 
-The local developer tests validate the rule contract and exercise a
-Grafana-compatible, metadata-only notification against a disposable HTTPS
-mock. They do not authenticate to Grafana Cloud, validate/apply the Terraform
-provider configuration, or prove remote delivery. Grafana Cloud and Render
-configuration/delivery remain **NOT VERIFIED** until separately configured
-and evidenced by the owner.
+Supply `loki_datasource_uid`, `webhook_url` pointing to the existing Sudoku
+backend `/api/alerts/grafana`, and `webhook_bearer_token` privately. Terraform
+Grafana authentication and sensitive variables belong in private process/
+secret configuration, never Git, logs or chat. State/plan files can contain
+credentials and must remain ignored/private. Do not print a plan with secrets.
+Pinned Terraform/provider versions are in `versions.tf`; no new tooling is
+required by this cleanup's configured tests.
+
+Update the existing rule's notification policy/contact point to deliver the
+authenticated webhook. Verify with a genuine qualifying save-server-error
+event only during a separately confirmed future exercise; a generic contact
+point test does not prove real SAVE-ERROR LOG evaluation and routing.
+Keep `ALERT_REPAIR_ENABLED=false` until operational prerequisites are verified.
+
+## Verification boundaries
+
+The configured backend tests validate the rule contract, private webhook
+configuration, negative event cases and isolated mock HTTPS delivery. Receiver
+tests cover authentication, positive finite values, malformed/oversized input,
+durable deduplication, bounded outbox retry and signed run claims.
+These are offline tests, not evidence of live Grafana routing, Copilot, PR
+auto-merge, CI publication, Render deployment or recovery. No provider call,
+dispatch or live fault is authorized now. Follow the
+[operator runbook](../../docs/runbooks/development-save-demo.md) for all live
+prerequisites and the 15-minute fail-stop/restoration timer.

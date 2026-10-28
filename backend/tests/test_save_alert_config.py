@@ -38,7 +38,7 @@ def _fires_for_save_outcomes(outcomes, now):
 
 def test_rule_contract_is_save_5xx_only_and_uses_a_rolling_five_minute_window():
     assert CONTRACT["expression"] == (
-        'sum(increase(sudoku_save_requests_total{outcome="server_error"}[5m])) > 0'
+        'sum(count_over_time({service_name="sudoku-api"} | json | operation="save_game" | outcome="server_error" [5m])) > 0'
     )
     assert re.search(r'no_data_state\s*=\s*"OK"', TERRAFORM)
     assert re.search(r'for\s*=\s*"0s"', TERRAFORM)
