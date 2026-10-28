@@ -373,7 +373,7 @@ def isolated_copilot_command(
         "--cap-drop=ALL", "--security-opt=no-new-privileges",
         "--pids-limit=128", "--memory=1g", "--cpus=2",
         "--user", f"{os.getuid()}:{os.getgid()}",
-        "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m,mode=1777",
+        "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=256m,mode=1777",
         "--env", "GITHUB_TOKEN", "--env", "HOME=/tmp/home",
         *mounts, "sudoku-repair-runtime:trusted", *arguments,
     ]

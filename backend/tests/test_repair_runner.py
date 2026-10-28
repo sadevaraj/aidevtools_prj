@@ -383,6 +383,14 @@ def test_pinned_cli_version_accepts_real_update_hint_only_for_pinned_version(out
     assert repair_runner.is_pinned_cli_version(output) is expected
 
 
+def test_isolated_runtime_tmpfs_allows_cli_native_addon_but_stays_hardened(tmp_path):
+    command = repair_runner.isolated_copilot_command(tmp_path, tmp_path, ["--version"])
+    options = command[command.index("--tmpfs") + 1].split(":", 1)[1].split(",")
+    assert "exec" in options and "noexec" not in options
+    assert {"nosuid", "nodev"} <= set(options)
+    assert "--read-only" in command and "--cap-drop=ALL" in command
+
+
 def test_mocked_cli_boundary_uses_explicit_agent_and_never_runs_model(tmp_path):
     calls = []
 
