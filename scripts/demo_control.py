@@ -12,7 +12,8 @@ import subprocess
 import sys
 from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHandler
 
-BRANCH = "demo/save-recovery"
+BRANCH = "main"
+WORKFLOW_REF = "sadevaraj/aidevtools_prj/.github/workflows/pipeline.yml@refs/heads/main"
 REPOSITORY = "sadevaraj/aidevtools_prj"
 BACKEND_TARGET = "https://simple-sudoku-backend.onrender.com"
 FRONTEND_TARGET = "https://simple-sudoku-frontend.onrender.com"
@@ -57,7 +58,7 @@ def _git(root: Path, *args: str) -> str:
 
 
 def validate_revisions(root: Path, trusted_revision: str, fault_revision: str) -> None:
-    """Accept only a single one-line save-handler fault on the demo branch."""
+    """Accept only a single one-line save-handler fault following trusted main."""
     if not SHA.fullmatch(trusted_revision) or not SHA.fullmatch(fault_revision):
         raise DemoGateError("Trusted and fault revisions must be full lowercase commit IDs.")
     if trusted_revision == fault_revision:
@@ -124,12 +125,38 @@ def validate_owner_gates(environment: dict[str, str]) -> None:
     if (
         environment.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
         or environment.get("GITHUB_REF") != "refs/heads/main"
+        or environment.get("PIPELINE_MODE") != "fault"
+        or environment.get("GITHUB_WORKFLOW_REF") != WORKFLOW_REF
+        or environment.get("GITHUB_RUN_ATTEMPT") != "1"
+        or environment.get("GITHUB_ACTOR") != "sadevaraj"
+        or not re.fullmatch(r"[1-9][0-9]{0,18}", environment.get("GITHUB_RUN_ID", ""))
     ):
-        raise DemoGateError("Fault publication must be owner-dispatched from trusted main.")
+        raise DemoGateError("Fault publication requires a first-attempt owner dispatch on MAIN.")
     evidence_url = environment.get("DEMO_ROLLBACK_EVIDENCE_URL", "")
     if not EVIDENCE_URL.fullmatch(evidence_url):
         raise DemoGateError("Current issue #13 rollback evidence is required.")
     validate_window(environment.get("DEMO_EXPIRES_AT", ""))
+
+
+def validate_runtime(environment: dict[str, str], root: Path, trusted: str, fault: str) -> None:
+    """Bind immutable T tooling, the workflow executing at F, and current MAIN.
+
+    The only T..F delta is the typo: scripts, workflow and pinned tests must
+    therefore be byte-identical. Never execute tooling selected by an alert.
+    """
+    if (
+        environment.get("GITHUB_REPOSITORY") != REPOSITORY
+        or environment.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+        or environment.get("GITHUB_REF") != "refs/heads/main"
+        or environment.get("GITHUB_WORKFLOW_REF") != WORKFLOW_REF
+        or environment.get("PIPELINE_MODE") not in {"fault", "repair"}
+        or environment.get("GITHUB_SHA") != fault
+        or environment.get("GITHUB_WORKFLOW_SHA") != fault
+        or _git(root, "rev-parse", "HEAD") != trusted
+        or _git(root, "rev-parse", "refs/remotes/origin/main") != fault
+    ):
+        raise DemoGateError("Trusted tooling, current MAIN and immutable workflow revision must bind to T/F.")
+    validate_revisions(root, trusted, fault)
 
 
 def validate_image_pair(
@@ -273,7 +300,8 @@ def arm_demo(environment: dict[str, str], root: Path, *, opener=None) -> None:
     trusted = environment.get("TRUSTED_REVISION", "")
     fault = environment.get("FAULT_REVISION", "")
     tree = expected_repaired_tree(root, trusted, fault)
-    if _git(root, "rev-parse", "refs/remotes/origin/demo/save-recovery") != fault:
+    validate_runtime(environment, root, trusted, fault)
+    if _git(root, "rev-parse", "refs/remotes/origin/main") != fault:
         raise DemoGateError("Fault branch moved before server authorization.")
     validate_image_pair(
         backend_digest=environment.get("BACKEND_DIGEST", ""),
@@ -323,6 +351,10 @@ def main(argv: list[str] | None = None) -> int:
     candidate.add_argument("--trusted-revision", required=True)
     candidate.add_argument("--fault-revision", required=True)
     candidate.add_argument("--repo", type=Path, default=Path.cwd())
+    runtime = commands.add_parser("verify-runtime")
+    runtime.add_argument("--trusted-revision", required=True)
+    runtime.add_argument("--fault-revision", required=True)
+    runtime.add_argument("--repo", type=Path, default=Path.cwd())
     merge = commands.add_parser("verify-merge")
     merge.add_argument("--repo", type=Path, default=Path.cwd())
     pair = commands.add_parser("validate-pair")
@@ -338,19 +370,21 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "verify-candidate":
             validate_owner_gates(dict(os.environ))
-            validate_revisions(args.repo, args.trusted_revision, args.fault_revision)
+            validate_runtime(dict(os.environ), args.repo, args.trusted_revision, args.fault_revision)
             branch_tip = _git(
                 args.repo, "rev-parse", "--verify",
-                "refs/remotes/origin/demo/save-recovery",
+                "refs/remotes/origin/main",
             )
             if branch_tip != args.fault_revision:
-                raise DemoGateError("Fault revision is not the current demo/save-recovery branch tip.")
+                raise DemoGateError("Fault revision is not the current main branch tip.")
             repaired_tree = expected_repaired_tree(
                 args.repo, args.trusted_revision, args.fault_revision
             )
             if os.environ.get("GITHUB_OUTPUT"):
                 with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                     output.write(f"expected_repaired_tree={repaired_tree}\n")
+        elif args.command == "verify-runtime":
+            validate_runtime(dict(os.environ), args.repo, args.trusted_revision, args.fault_revision)
         elif args.command == "verify-merge":
             verify_merge(dict(os.environ), args.repo)
         elif args.command == "arm-demo":

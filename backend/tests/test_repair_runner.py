@@ -121,10 +121,11 @@ def test_runner_selects_actual_coordinator_and_only_allows_narrow_tools():
 
 def test_workflow_is_dispatch_only_segregates_permissions_and_uses_fixed_runtime():
     workflow = yaml.load(
-        (ROOT / ".github/workflows/repair.yml").read_text(encoding="utf-8"),
+        (ROOT / ".github/workflows/pipeline.yml").read_text(encoding="utf-8"),
         Loader=yaml.BaseLoader,
     )
-    assert set(workflow["on"]) == {"workflow_dispatch"}
+    assert set(workflow["on"]) == {"pull_request", "push", "workflow_dispatch"}
+    assert "inputs.mode == 'repair'" in workflow["jobs"]["authorization"]["if"]
     assert workflow["permissions"] == {"contents": "read"}
     jobs = workflow["jobs"]
     assert jobs["authorization"]["permissions"] == {
@@ -485,7 +486,7 @@ def test_inherited_or_invalid_authorization_cannot_reinvoke_provider_or_publish(
 
 def test_workflow_binds_all_downstream_gates_to_trusted_outputs_and_attempt_artifact():
     workflow = yaml.load(
-        (ROOT / ".github/workflows/repair.yml").read_text(), Loader=yaml.BaseLoader,
+        (ROOT / ".github/workflows/pipeline.yml").read_text(), Loader=yaml.BaseLoader,
     )
     jobs = workflow["jobs"]
     assert jobs["authorization"]["outputs"] == {

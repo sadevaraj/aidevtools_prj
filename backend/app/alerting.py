@@ -39,11 +39,11 @@ JWKS_TTL_SECONDS = 300
 JWKS_FAILURE_COOLDOWN_SECONDS = 30
 JWKS_TIMEOUT_SECONDS = 5
 OIDC_WORKFLOW_REF = (
-    "sadevaraj/aidevtools_prj/.github/workflows/repair.yml@refs/heads/main"
+    "sadevaraj/aidevtools_prj/.github/workflows/pipeline.yml@refs/heads/main"
 )
 DISPATCH_URL = (
     "https://api.github.com/repos/sadevaraj/aidevtools_prj/"
-    "actions/workflows/repair.yml/dispatches"
+    "actions/workflows/pipeline.yml/dispatches"
 )
 
 
@@ -69,6 +69,7 @@ class WorkflowRun:
 
     run_id: int
     run_attempt: int
+    workflow_sha: str = ""
 
 
 class _NoJwksRedirect(urllib.request.HTTPRedirectHandler):
@@ -185,6 +186,7 @@ def verify_github_oidc_token(token: str) -> WorkflowRun:
                     "repository",
                     "ref",
                     "workflow_ref",
+                    "workflow_sha",
                     "event_name",
                     "run_id",
                     "run_attempt",
@@ -197,6 +199,8 @@ def verify_github_oidc_token(token: str) -> WorkflowRun:
             or claims["workflow_ref"] != OIDC_WORKFLOW_REF
             or claims["event_name"] != "workflow_dispatch"
             or claims["aud"] != OIDC_AUDIENCE
+            or not isinstance(claims["workflow_sha"], str)
+            or not re.fullmatch(r"[0-9a-f]{40}", claims["workflow_sha"])
         ):
             raise InvalidWorkflowIdentity
         if isinstance(claims["run_id"], bool) or isinstance(claims["run_attempt"], bool):
@@ -207,7 +211,7 @@ def verify_github_oidc_token(token: str) -> WorkflowRun:
             raise InvalidWorkflowIdentity
     except (jwt.PyJWTError, KeyError, TypeError, ValueError, OSError) as error:
         raise InvalidWorkflowIdentity from error
-    return WorkflowRun(run_id=run_id, run_attempt=run_attempt)
+    return WorkflowRun(run_id=run_id, run_attempt=run_attempt, workflow_sha=claims["workflow_sha"])
 
 
 def validate_payload(payload: object, *, development: bool) -> str:
@@ -365,8 +369,9 @@ def authorize_incident(
             or demo.state != "claimed"
             or demo.alert_incident_id != incident_id
             or demo.expires_at <= now
-            or demo.branch != "demo/save-recovery"
+            or demo.branch != "main"
             or demo.trusted_revision == demo.fault_revision
+            or run.workflow_sha != demo.fault_revision
         ):
             raise IncidentAuthorizationError
     if claim:
@@ -436,6 +441,7 @@ def _dispatch(incident_id: str, expires_at: datetime, bearer_token: str) -> bool
             {
                 "ref": "main",
                 "inputs": {
+                    "mode": "repair",
                     "incident_id": incident_id,
                     "expires_at": expires_at.isoformat(),
                 },

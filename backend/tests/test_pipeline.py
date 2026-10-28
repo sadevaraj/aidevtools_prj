@@ -547,8 +547,8 @@ class WorkflowTests(unittest.TestCase):
         cls.workflow = yaml.load(cls.path.read_text(), Loader=yaml.BaseLoader)
 
     def test_triggers_and_read_only_default(self):
-        self.assertEqual(set(self.workflow["on"]), {"pull_request", "push"})
-        self.assertEqual(self.workflow["on"]["push"]["branches"], ["main", "demo/save-recovery"])
+        self.assertEqual(set(self.workflow["on"]), {"pull_request", "push", "workflow_dispatch"})
+        self.assertEqual(self.workflow["on"]["push"]["branches"], ["main"])
         self.assertEqual(self.workflow["permissions"], {"contents": "read"})
         self.assertEqual(self.workflow["concurrency"]["cancel-in-progress"], "false")
 
@@ -583,14 +583,27 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("RENDER_API_KEY", json.dumps(jobs["publish"]))
 
     def test_pinned_actions_and_failure_artifacts(self):
-        for job in self.workflow["jobs"].values():
+        for name, job in self.workflow["jobs"].items():
             for step in job["steps"]:
                 if "uses" in step:
                     self.assertRegex(step["uses"], r"^[^@]+@[0-9a-f]{40}$")
                 if step.get("uses", "").startswith("actions/checkout@"):
-                    self.assertEqual(step["with"]["persist-credentials"], "false")
+                    credentialed_publisher = (
+                        name == "publish-pr" and step["with"].get("path") == "publish"
+                    )
+                    self.assertEqual(
+                        step["with"]["persist-credentials"],
+                        "true" if credentialed_publisher else "false",
+                    )
+                    if credentialed_publisher:
+                        self.assertEqual(step["with"]["token"], "${{ secrets.ALERT_REPAIR_PR_TOKEN }}")
                 if step.get("uses", "").startswith("actions/upload-artifact@"):
-                    self.assertEqual(step["if"], "always()")
+                    if name in {"publish", "deploy-development", "deploy-fault-pair"}:
+                        self.assertEqual(step["if"], "always()")
+                    else:
+                        # A failed candidate/test/build must never publish an
+                        # artifact that a credentialed downstream job consumes.
+                        self.assertNotIn("if", step)
                     self.assertEqual(step["with"]["if-no-files-found"], "error")
 
 

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 import pytest
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 
 from app import main as api_module
 from app.alerting import WorkflowRun, authorize_incident, IncidentAuthorizationError
@@ -18,12 +19,20 @@ from app.models import AlertIncident, DevelopmentDemoAuthorization
 @pytest.fixture(autouse=True)
 def clear_demo_authorizations():
     with SessionLocal.begin() as db:
-        db.execute(update(DevelopmentDemoAuthorization).values(alert_incident_id=None))
+        db.execute(
+            update(DevelopmentDemoAuthorization)
+            .where(DevelopmentDemoAuthorization.alert_incident_id.is_not(None))
+            .values(alert_incident_id=None)
+        )
         db.execute(delete(AlertIncident))
         db.execute(delete(DevelopmentDemoAuthorization))
     yield
     with SessionLocal.begin() as db:
-        db.execute(update(DevelopmentDemoAuthorization).values(alert_incident_id=None))
+        db.execute(
+            update(DevelopmentDemoAuthorization)
+            .where(DevelopmentDemoAuthorization.alert_incident_id.is_not(None))
+            .values(alert_incident_id=None)
+        )
         db.execute(delete(AlertIncident))
         db.execute(delete(DevelopmentDemoAuthorization))
 
@@ -47,7 +56,7 @@ def arm_body(**overrides):
         "trusted_revision": "a" * 40,
         "fault_revision": "b" * 40,
         "expected_repaired_tree": "c" * 40,
-        "branch": "demo/save-recovery",
+        "branch": "main",
         "backend_digest": "sha256:" + "1" * 64,
         "frontend_digest": "sha256:" + "2" * 64,
         "rollback_backend_digest": "sha256:" + "3" * 64,
@@ -89,7 +98,7 @@ def test_demo_arm_rejects_missing_auth_disabled_and_malformed_owner_inputs(
     assert client.post("/api/alerts/demo/arm", json=payload).status_code == 401
     headers = {"Authorization": "Bearer demo-owner-only-test"}
     for changed in (
-        {"branch": "main"},
+        {"branch": "feature"},
         {"trusted_revision": "not-a-full-revision"},
         {"backend_digest": "mutable:tag"},
         {"rollback_backend_digest": "sha256:" + "1" * 64},
@@ -117,7 +126,7 @@ def test_demo_arm_binds_alert_to_fixed_server_authorization_and_rejects_second_a
     headers = {"Authorization": "Bearer demo-owner-only-test"}
     armed = client.post("/api/alerts/demo/arm", json=arm_body(), headers=headers)
     assert armed.status_code == 201
-    assert armed.json()["branch"] == "demo/save-recovery"
+    assert armed.json()["branch"] == "main"
     assert armed.json()["trusted_revision"] == "a" * 40
     assert client.post(
         "/api/alerts/demo/arm", json=arm_body(), headers=headers
@@ -141,7 +150,7 @@ def test_demo_arm_binds_alert_to_fixed_server_authorization_and_rejects_second_a
         assert demo.trusted_revision == "a" * 40
         assert demo.fault_revision == "b" * 40
         assert demo.expected_repaired_tree == "c" * 40
-        assert demo.branch == "demo/save-recovery"
+        assert demo.branch == "main"
         assert demo.backend_target == "https://simple-sudoku-backend.onrender.com"
         assert demo.frontend_target == "https://simple-sudoku-frontend.onrender.com"
         assert not hasattr(demo, "commands")
@@ -155,7 +164,7 @@ def test_demo_arm_binds_alert_to_fixed_server_authorization_and_rejects_second_a
         authorize_incident(
             db,
             incident_id,
-            WorkflowRun(12345, 1),
+            WorkflowRun(12345, 1, "b" * 40),
             expected_expires_at=incident_expiry,
             claim=True,
             require_demo_authorization=True,
@@ -164,7 +173,7 @@ def test_demo_arm_binds_alert_to_fixed_server_authorization_and_rejects_second_a
         authorize_incident(
             db,
             incident_id,
-            WorkflowRun(12345, 1),
+            WorkflowRun(12345, 1, "b" * 40),
             expected_expires_at=incident_expiry,
             claim=False,
             require_demo_authorization=True,
@@ -176,7 +185,7 @@ def test_demo_arm_binds_alert_to_fixed_server_authorization_and_rejects_second_a
             authorize_incident(
                 db,
                 incident_id,
-                WorkflowRun(12346, 1),
+                WorkflowRun(12346, 1, "b" * 40),
                 expected_expires_at=incident_expiry,
                 claim=True,
                 require_demo_authorization=True,
@@ -255,7 +264,7 @@ def test_parallel_claims_accept_one_run_and_reject_reruns(enabled_demo):
         try:
             with SessionLocal.begin() as db:
                 authorize_incident(
-                    db, incident_id, WorkflowRun(run_id, 1),
+                    db, incident_id, WorkflowRun(run_id, 1, "b" * 40),
                     expected_expires_at=expiry, claim=True, require_demo_authorization=True,
                 )
             return True
@@ -272,7 +281,7 @@ def test_parallel_claims_accept_one_run_and_reject_reruns(enabled_demo):
     with SessionLocal.begin() as db:
         with pytest.raises(IncidentAuthorizationError):
             authorize_incident(
-                db, incident_id, WorkflowRun(run, 2), expected_expires_at=expiry,
+                db, incident_id, WorkflowRun(run, 2, "b" * 40), expected_expires_at=expiry,
                 claim=True, require_demo_authorization=True,
             )
 
@@ -281,7 +290,7 @@ def test_revocation_and_expiry_reject_even_previously_claimed_run(enabled_demo):
     incident_id, expiry = accepted_demo(enabled_demo)
     with SessionLocal.begin() as db:
         authorize_incident(
-            db, incident_id, WorkflowRun(888, 1), expected_expires_at=expiry,
+            db, incident_id, WorkflowRun(888, 1, "b" * 40), expected_expires_at=expiry,
             claim=True, require_demo_authorization=True,
         )
     assert enabled_demo.post("/api/alerts/demo/revoke").status_code == 401
@@ -300,7 +309,160 @@ def test_revocation_and_expiry_reject_even_previously_claimed_run(enabled_demo):
         with SessionLocal.begin() as db:
             with pytest.raises(IncidentAuthorizationError):
                 authorize_incident(
-                    db, incident_id, WorkflowRun(888, 1),
+                    db, incident_id, WorkflowRun(888, 1, "b" * 40),
                     expected_expires_at=expiry, claim=False,
                     require_demo_authorization=False,  # Cannot bypass a durable binding by disabling a flag.
                 )
+
+
+@pytest.mark.parametrize("workflow_sha", ["", "a" * 40, "c" * 40])
+def test_claim_requires_immutable_faulty_main_workflow_revision(enabled_demo, workflow_sha):
+    incident_id, expiry = accepted_demo(enabled_demo)
+    with SessionLocal.begin() as db:
+        with pytest.raises(IncidentAuthorizationError):
+            authorize_incident(
+                db, incident_id, WorkflowRun(123, 1, workflow_sha),
+                expected_expires_at=expiry, claim=True, require_demo_authorization=True,
+            )
+    with SessionLocal() as db:
+        assert db.get(AlertIncident, incident_id).execution_claimed_at is None
+
+
+def test_revoking_does_not_allow_rearming_same_fault_revision(enabled_demo):
+    assert enabled_demo.post(
+        "/api/alerts/demo/arm", json=arm_body(), headers=OWNER_HEADERS,
+    ).status_code == 201
+    assert enabled_demo.post(
+        "/api/alerts/demo/revoke", headers=OWNER_HEADERS,
+    ).status_code == 200
+    api_module.limiter.reset()
+    assert enabled_demo.post(
+        "/api/alerts/demo/arm", json=arm_body(), headers=OWNER_HEADERS,
+    ).status_code == 409
+
+
+def test_emergency_revoke_preserves_legacy_rows_and_revokes_main_after_upgrade(enabled_demo):
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    config = Config("alembic.ini")
+    command.downgrade(config, "0003_demo_authorization")
+    expired = datetime.now(timezone.utc) - timedelta(days=1)
+    try:
+        def historical_row(identifier, state, fault_revision, **claim):
+            return DevelopmentDemoAuthorization(
+                id=identifier * 64,
+                trusted_revision="a" * 40,
+                fault_revision=fault_revision * 40,
+                expected_repaired_tree="c" * 40,
+                branch="demo/save-recovery",
+                backend_digest="sha256:" + "1" * 64,
+                frontend_digest="sha256:" + "2" * 64,
+                rollback_backend_digest="sha256:" + "3" * 64,
+                rollback_frontend_digest="sha256:" + "4" * 64,
+                backend_target="https://simple-sudoku-backend.onrender.com",
+                frontend_target="https://simple-sudoku-frontend.onrender.com",
+                rollback_evidence_url=(
+                    "https://github.com/sadevaraj/aidevtools_prj/issues/13"
+                    "#issuecomment-999999"
+                ),
+                state=state,
+                expires_at=expired,
+                **claim,
+            )
+
+        legacy_armed = historical_row("d", "armed", "d")
+        legacy_claimed = historical_row(
+            "e", "claimed", "e",
+            claimed_run_id=99,
+            claimed_run_attempt=1,
+            claimed_at=expired,
+        )
+        with SessionLocal.begin() as db:
+            assert db.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "0003_demo_authorization"
+            )
+            db.add_all((legacy_armed, legacy_claimed))
+
+        command.upgrade(config, "head")
+        incident_id, expiry = accepted_demo(enabled_demo)
+        run = WorkflowRun(12345, 1, "b" * 40)
+        with SessionLocal.begin() as db:
+            authorize_incident(
+                db,
+                incident_id,
+                run,
+                expected_expires_at=expiry,
+                claim=True,
+                require_demo_authorization=True,
+            )
+
+        # Reproduce the old unscoped revoke update: NOT VALID exempts the
+        # migration scan, not this later write against historical rows.
+        with SessionLocal() as db:
+            with db.begin():
+                for legacy_id in (legacy_armed.id, legacy_claimed.id):
+                    with pytest.raises(IntegrityError):
+                        with db.begin_nested():
+                            db.execute(
+                                update(DevelopmentDemoAuthorization)
+                                .where(DevelopmentDemoAuthorization.id == legacy_id)
+                                .values(state="revoked")
+                            )
+
+        response = enabled_demo.post(
+            "/api/alerts/demo/revoke", headers=OWNER_HEADERS,
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"revoked": 1}
+        with SessionLocal() as db:
+            historical_armed = db.get(DevelopmentDemoAuthorization, legacy_armed.id)
+            historical_claimed = db.get(DevelopmentDemoAuthorization, legacy_claimed.id)
+            incident = db.get(AlertIncident, incident_id)
+            current = db.get(
+                DevelopmentDemoAuthorization, incident.demo_authorization_id,
+            )
+            assert historical_armed is not None
+            assert historical_armed.branch == "demo/save-recovery"
+            assert historical_armed.state == "armed"
+            assert historical_claimed is not None
+            assert historical_claimed.branch == "demo/save-recovery"
+            assert historical_claimed.state == "claimed"
+            assert historical_claimed.claimed_run_id == 99
+            assert {row.id for row in db.scalars(
+                select(DevelopmentDemoAuthorization)
+            ).all()} == {legacy_armed.id, legacy_claimed.id, incident.demo_authorization_id}
+            assert current is not None
+            assert current.branch == "main"
+            assert current.state == "revoked"
+
+        for claim in (True, False):
+            with SessionLocal.begin() as db:
+                with pytest.raises(IncidentAuthorizationError):
+                    authorize_incident(
+                        db,
+                        incident_id,
+                        run,
+                        expected_expires_at=expiry,
+                        claim=claim,
+                        require_demo_authorization=True,
+                    )
+    finally:
+        command.upgrade(config, "head")
+
+
+def test_new_main_constraint_and_chain_are_applied_to_disposable_database(enabled_demo):
+    from sqlalchemy import text
+
+    with SessionLocal() as db:
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "0004_main_demo"
+        constraint = db.scalar(text(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conname = 'ck_demo_authorization_branch'"
+        ))
+        assert "'main'" in constraint and "NOT VALID" in constraint
+        assert db.scalar(text(
+            "SELECT count(*) FROM pg_indexes WHERE indexname = 'uq_demo_main_fault'"
+        )) == 1

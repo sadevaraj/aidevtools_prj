@@ -328,7 +328,7 @@ async def arm_development_demo(request: Request, db: DatabaseDependency):
         or authorization.trusted_revision == authorization.fault_revision
         or authorization.backend_digest == authorization.rollback_backend_digest
         or authorization.frontend_digest == authorization.rollback_frontend_digest
-        or authorization.branch != "demo/save-recovery"
+        or authorization.branch != "main"
         or not all(
             re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
             for digest in (
@@ -375,6 +375,13 @@ async def arm_development_demo(request: Request, db: DatabaseDependency):
         )
         if active is not None:
             raise HTTPException(status_code=409, detail="Another demo authorization is active.")
+        if db.scalar(
+            select(DevelopmentDemoAuthorization.id).where(
+                DevelopmentDemoAuthorization.branch == "main",
+                DevelopmentDemoAuthorization.fault_revision == authorization.fault_revision,
+            )
+        ) is not None:
+            raise HTTPException(status_code=409, detail="This fault revision was already authorized.")
         authorization_id = secrets.token_hex(32)
         row = DevelopmentDemoAuthorization(
             id=authorization_id,
@@ -422,7 +429,12 @@ def revoke_development_demo(request: Request, db: DatabaseDependency):
     db.execute(text("SELECT pg_advisory_xact_lock(781230042)"))
     rows = db.scalars(
         select(DevelopmentDemoAuthorization)
-        .where(DevelopmentDemoAuthorization.state.in_(("armed", "claimed")))
+        .where(
+            # 0004's NOT VALID constraint still applies to updates. Leave
+            # historical branch authorizations untouched during an emergency stop.
+            DevelopmentDemoAuthorization.branch == "main",
+            DevelopmentDemoAuthorization.state.in_(("armed", "claimed")),
+        )
         .with_for_update()
     ).all()
     for row in rows:

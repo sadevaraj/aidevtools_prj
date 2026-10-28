@@ -170,7 +170,7 @@ The initial owner-approved sequence is:
 
 The [pipeline runbook](docs/runbooks/pipeline.md) documents PR/main tests,
 main paired SHA/digest publication with `GITHUB_TOKEN` (plus the default-off,
-exact #20 demo-recovery exception), exact-image Render
+exact #20 owner-dispatched known-fault development exception), exact-image Render
 deployment, owner variables/environment secret setup, failure notifications,
 and operator fallback. Both CD flags default off; no Render credentials are
 available to this implementation. GitHub Actions failure notifications require
@@ -298,39 +298,46 @@ broader alert path in [issue #18](https://github.com/sadevaraj/aidevtools_prj/is
 Issue #18's current body includes the authenticated receiver and bounded
 repair-PR path; earlier notification-only notes in the repository are stale.
 
-The #20 approval permits only a future owner-operated one-demo exception:
-healthy trusted revision `T`, exact one-line `body.board` → `body.borad` fault
-revision `F` on `demo/save-recovery`, verified rollback image pair, development
-targets, immutable image provenance, and explicit test-window confirmation.
-Ordinary CI remains unchanged and is expected to fail on `F`; its tests are not
-weakened. A separate gated workflow validates the exact delta, builds unprivileged
-images, exercises an authenticated save failure/unchanged database board on
-disposable PostgreSQL, and only then exposes registry/deployment credentials to
-trusted publication steps. The existing backend receiver binds an accepted
-incident to durable `T`/`F`, branch, image digests, fixed Render targets, expiry,
-and one OIDC-authenticated run/attempt claim. Alert payloads do not select
-commands, refs, URLs, or permissions.
+The [latest agent-recorded approval, 28 October 2026 00:22 +01:00](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6456057621)
+supersedes the earlier branch-based and withdrawn CI-only alternatives:
+**owner commits the exact deliberate error on MAIN → explicitly approved
+development fault deployment → failed Save → Grafana alert → tested Copilot
+fix PR to MAIN → manual owner merge → normal deployment**. This task implements
+and tests the disabled configuration locally; it does not execute that chain.
 
-The main-ref repair workflow uses trusted `T` tooling and regression tests while
-the candidate operates only on the exact `F` checkout. It accepts only the
-single typo correction. Candidate/test jobs have no database, Render, or PR
-publication credentials. Separate current-candidate QA and Reviewer Copilot
-sessions must return distinct, patch-hash-bound PASS evidence before an isolated
-publisher can open a PR based on the still-unchanged `F` demo branch. The owner
-manually merges without squash/rebase/fast-forward directly onto F. The normal demo-branch pipeline then runs the full configured
-suite and can publish/deploy only the owner-enabled exact repaired tree and
-immutable image pair. Main remains healthy; merge is never automatic and
-development CD requires explicit owner enablement for the expected repair.
-No production service or completed-game data is a target.
+Only `.github/workflows/pipeline.yml` is used. Ordinary PR/main tests and
+successful-main tests → publish → deploy gates remain unchanged; F's normal
+save tests stay red and publish nothing. Its separate `mode=fault` dispatch
+is a narrow owner-enabled exception, not a generic failed-test bypass. It binds
+healthy immutable `T` tooling/tests to current MAIN `F`, allowing only the
+one-commit, one-line `body.board` → `body.borad` delta. It proves T's full suite
+and the authenticated 500/unchanged-board/repaired persistence fixture on
+disposable PostgreSQL, builds without publisher/deployer credentials, publishes
+prebuilt immutable images, arms the healthy server and verifies the rollback
+pair before development deployment. No permanent demo branch/environment exists.
+
+Grafana's authenticated receiver/outbox dispatches `mode=repair` on MAIN with
+only an opaque incident and server expiry. Signed OIDC must identify this exact
+pipeline at F; durable T/F, digests, fixed targets, expiry and one-time run/attempt
+claims fail closed. Candidate Copilot uses T's pinned regression and tools with
+no live DB, Render, OIDC or writer token. Full trusted tests plus independent
+current-candidate QA/Reviewer evidence precede an isolated publisher that never
+executes candidate code. Only `body.borad` → `body.board` is accepted; unsupported
+faults stop. The temporary PR branch targets unchanged faulty MAIN F; only the
+owner merges. The resulting main push uses ordinary successful CI/CD, not an
+exception. No production service or completed-game data is a target.
 
 Every feature and remote capability remains default-off. No live alert, Copilot
 provider request, Actions run, GHCR publication, Render deployment, rollback, or
 recovery was executed for this implementation. The user reports corrective
 deployment and login/save verification, but independent issue #13 verification,
-healthy rollback-pair evidence, missing PR credential, demo enablement, and
+healthy rollback-pair evidence, valid PR credential, demo enablement, and
 Copilot entitlement/quota remain unverified. Issues #12 and #13 are open; do not
 enable or run the demo until the concrete prerequisites in
 [the owner-operated runbook](docs/runbooks/development-save-demo.md) are met.
+The token reportedly placed in a repository **variable** is not a valid secret:
+the owner must rotate it, remove that variable and recreate the proper secret
+privately before any live run. This task does not inspect or change it.
 
 Course brief:
 https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project

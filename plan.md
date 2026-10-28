@@ -17,17 +17,24 @@ Issue #18's current body also includes the subsequently approved bounded repair
 path. Its original notification-only scope is historical, not its current
 criteria. The Sudoku product specification and rules do not change.
 
-### Approved #20 exception (27 October 2026)
+### Current #20 approval (28 October 2026 00:22 +01:00)
 
-[Issue #20 and approval evidence](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6454530534)
-authorize implementation of one **future owner-operated development** demo,
-not its live execution. This narrowly supersedes the local-only fault
-prohibitions in the historical #19 phases below. Main stays healthy. A dedicated
-`demo/save-recovery` commit `F` must descend directly from healthy tooling `T`
-and change only `body.board` to `body.borad` in the save handler. Ordinary CI
-still fails on F. No tests, product requirements, or guards are weakened.
+[Latest #20 approval evidence](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6456057621)
+records the user's “i want grafana triggered fix” then “yes” to:
+**deliberate-error commit on MAIN → approved development fault deployment →
+failed Save → Grafana alert → tested Copilot fix PR MAIN → manual owner merge →
+normal deploy**. This supersedes both the earlier branch-based design and
+withdrawn CI-only alternative, not evidence that either was completed.
+Only LOCAL implementation/tests/docs are authorized now. The historical #19
+plan below is retained as history; this current section takes precedence.
+F must directly follow healthy immutable T on MAIN and change only `body.board`
+to `body.borad` in save_game. Ordinary CI still fails on F. Product/guards and
+original tests are not weakened.
 
-The separate owner-dispatched fault workflow proves healthy T and the
+Only existing `pipeline.yml` is used: normal PR/main tests → successful main
+publication → gated development deploy, owner `mode=fault`, and Grafana
+`mode=repair`. No permanent demo branch/environment or extra workflow exists.
+The narrow fault dispatch proves healthy T and the
 authenticated fault/rollback/repaired persistence fixture using disposable
 PostgreSQL. Unprivileged builds produce paired image archives; trusted jobs
 check provenance and publish immutable digests without executing candidate
@@ -36,16 +43,19 @@ server with T/F, repaired tree, fixed development targets, both fault/rollback
 digests, rollback evidence, and an expiring window. Deployment rechecks the
 currently healthy rollback pair.
 
-The existing main repair workflow consumes one durable OIDC run/attempt claim.
+The receiver/outbox dispatches the same MAIN pipeline in repair mode; failed CI
+never substitutes for Grafana. OIDC binds the pipeline at immutable F (identical
+to T except the typo); T tooling and tests are owner-pinned before checkout.
+The server consumes one durable run/attempt claim.
 Candidate Copilot runs in a constrained container without host home, Docker
 socket, OIDC, DB, Render, or PR credentials. T instructions are read-only.
 Only the exact repair is accepted. Its tree must equal T's tree before the
 **trusted** full test harness runs. Two fresh QA/Reviewer sessions and their
 actual test receipt bind the same F, patch hash, tree, run, and attempt before
 credentialed PR publication. The PR base must still be F. The owner reviews
-and manually performs a non-squash merge; the ordinary demo pipeline runs full
-tests, validates the exact expected tree and F merge parent, then uses the
-owner-enabled development delivery path. There is no automatic merge.
+and manually merges to MAIN; ordinary successful main tests, publication and
+owner-enabled development delivery follow. There is no automatic merge or
+MAIN write by agents. Unknown faults stop; no provider runs in local tests.
 
 Implementation -> independent Prj_QA -> Prj_Reviewer is still mandatory on the
 same working diff and baseline. Local checks do **not** close #20's live gates.
@@ -53,6 +63,11 @@ Follow [the concrete owner runbook](docs/runbooks/development-save-demo.md).
 Issues #12/#13, healthy rollback proof, credential permissions, CLI entitlement,
 available free quota/no-overage, and the explicit test window remain owner/live
 prerequisites. Unknown/true flags and token presence alone are not evidence.
+The token reportedly placed in a repository variable is NOT a valid secret:
+owner rotation, removal of that variable and private recreation as the proper
+secret are required before live work; this task neither reads nor changes it.
+Migrations 0002/0003 remain intact; 0004 adapts authorization to MAIN without
+relabeling historical approvals or changing player data. No live DB operation.
 Stop/revoke/rollback on uncertainty or timeout. No production, paid enablement,
 business-data rewrites, provider calls, remote branches, publication, or
 deployment occurs in this implementation task.

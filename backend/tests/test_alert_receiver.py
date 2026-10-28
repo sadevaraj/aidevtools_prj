@@ -575,6 +575,7 @@ def test_github_oidc_verification_requires_real_signature_and_exact_workflow(
         "repository": "sadevaraj/aidevtools_prj",
         "ref": "refs/heads/main",
         "workflow_ref": alerting.OIDC_WORKFLOW_REF,
+        "workflow_sha": "b" * 40,
         "event_name": "workflow_dispatch",
         "run_id": "321",
         "run_attempt": "1",
@@ -582,7 +583,7 @@ def test_github_oidc_verification_requires_real_signature_and_exact_workflow(
     token = jwt.encode(
         claims, private_key, algorithm="RS256", headers={"kid": "offline"}
     )
-    assert alerting.verify_github_oidc_token(token) == alerting.WorkflowRun(321, 1)
+    assert alerting.verify_github_oidc_token(token) == alerting.WorkflowRun(321, 1, "b" * 40)
     for key, value in (
         ("repository", "attacker/repo"),
         ("ref", "refs/heads/feature"),
@@ -591,6 +592,7 @@ def test_github_oidc_verification_requires_real_signature_and_exact_workflow(
             "sadevaraj/aidevtools_prj/.github/workflows/other.yml@refs/heads/main",
         ),
         ("event_name", "push"),
+        ("workflow_sha", "main"),
         ("iss", "https://attacker.example"),
         ("aud", "attacker"),
     ):

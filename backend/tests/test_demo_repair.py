@@ -40,7 +40,7 @@ def environment():
 
 
 @pytest.mark.parametrize("key,value", [
-    ("branch", "main"), ("trusted_revision", "main"), ("fault_revision", "a" * 40),
+    ("branch", "feature"), ("trusted_revision", "main"), ("fault_revision", "a" * 40),
     ("expected_repaired_tree", ""), ("backend_digest", "latest"),
     ("frontend_digest", ""), ("rollback_backend_digest", "sha256:" + "1" * 64),
     ("backend_target", "https://kanban.invalid"),
@@ -172,10 +172,11 @@ def test_fault_window_rejects_missing_expired_or_excessive_ttl(expiry):
 
 def test_workflows_keep_fault_red_and_segregate_tooling_candidate_and_publisher():
     fault = yaml.load(
-        (ROOT / ".github/workflows/development-save-demo.yml").read_text(),
+        (ROOT / ".github/workflows/pipeline.yml").read_text(),
         Loader=yaml.BaseLoader,
     )
-    assert set(fault["on"]) == {"workflow_dispatch"}
+    assert set(fault["on"]) == {"pull_request", "push", "workflow_dispatch"}
+    assert "inputs.mode == 'fault'" in fault["jobs"]["authorize-fault"]["if"]
     for name in ("reproduce-fault", "build-fault-images"):
         job = fault["jobs"][name]
         assert job["permissions"] == {"contents": "read"}
@@ -183,7 +184,7 @@ def test_workflows_keep_fault_red_and_segregate_tooling_candidate_and_publisher(
     publisher = fault["jobs"]["publish-fault-images"]
     assert "docker/build-push-action" not in json.dumps(publisher)
     assert "publish-pair" in json.dumps(publisher)
-    repair = yaml.load((ROOT / ".github/workflows/repair.yml").read_text(), Loader=yaml.BaseLoader)
+    repair = fault
     assert repair["env"]["DEMO_CONTROL_REQUIRED"] == "true"
     assert "id-token" not in repair["jobs"]["candidate"]["permissions"]
     assert "test-candidate" in json.dumps(repair["jobs"]["verify"])

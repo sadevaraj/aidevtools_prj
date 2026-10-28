@@ -337,35 +337,37 @@ any later deployed demonstration, not for disabled local implementation.
 
 ## Issue #20: Exact owner-gated save-recovery demo extension
 
-The user approved the exact design in
-[issue #20](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6454530534)
-attributed in chat on 27 October 2026. This is agent-recorded human approval,
-not a human-authored GitHub comment. It supersedes only the #19 prohibition on a
-future live development fault: implementation work and local tests do not
-authorize a live run. The accepted exception is one deliberate one-line
-save-handler fault on `demo/save-recovery`; `main` remains healthy.
+The [latest #20 approval](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6456057621)
+records user chat on **28 October 2026 00:22 +01:00**: “i want grafana triggered
+fix”, then “yes” to **deliberate-error commit on MAIN → explicitly approved
+development fault deployment → failed Save → Grafana alert → Copilot fix PR MAIN
+→ manual owner merge → normal deploy**. This is agent-recorded human evidence,
+not a human-authored GitHub comment. Earlier permanent demo-branch/separate
+workflows and the CI-only alternative are superseded, not completed.
+Implementation/tests/docs are LOCAL-only now. No live execution is authorized.
 
 - Trusted healthy revision `T` and exact fault revision `F` must have a
-  one-commit ancestry and a sole `backend/app/main.py` delta from
+  one-commit MAIN ancestry and a sole `backend/app/main.py` delta from
   `body.board` to `body.borad`. Normal CI remains unchanged and fails on `F`.
-- A separate `workflow_dispatch` validates explicit owner gates, current
+- Only existing `pipeline.yml` is used. Its `mode=fault` dispatch validates owner gates, current
   healthy rollback digests, exact development targets, branch ancestry and
-  immutable image provenance. It runs the authenticated HTTP 500 and unchanged
+  immutable image provenance. It proves T's full suite and the authenticated HTTP 500 and unchanged
   persisted-board regression on a disposable PostgreSQL database before building
   images. Builds run without publication/deployment secrets; publication only
-  pushes those prebuilt image artifacts. Deployment rechecks that both current
+  pushes those prebuilt image artifacts. It uses existing `sudoku-development`,
+  not a new demo environment. Deployment rechecks that both current
   Render services are healthy and match the explicitly verified rollback pair.
 - The default-off backend demo authorization persists `T`, `F`, expected
   repaired tree, branch, current and rollback image digests, fixed frontend and
   backend targets, bounded expiry, alert association, and one-time OIDC
   workflow run/attempt. Owner control uses a distinct secret; the alert payload
   never chooses executable refs, commands, URLs, or permissions.
-- The trusted `main` repair workflow uses `T` tools/tests while a separate
+- The same pipeline's Grafana-dispatched `mode=repair` uses `T` tools/tests while a separate
   checkout contains `F`. Only the one exact typo fix is accepted. Candidate and
   test jobs receive no database, Render, or PR token. Separate QA and Reviewer
   Copilot sessions must produce distinct PASS reports bound to the fault SHA
   and exact patch hash before a trusted publication job receives its PR token.
-  The resulting PR targets `demo/save-recovery` while its tip is still `F`;
+  The resulting temporary repair PR branch targets MAIN while its tip is still `F`;
   human merge is manual.
 - Copilot runs in a non-root, read-only-root container with resource limits,
   dropped capabilities, no host home/socket mounts, a disposable home, and
@@ -376,22 +378,37 @@ save-handler fault on `demo/save-recovery`; `main` remains healthy.
   Two distinct read-only QA/Reviewer CLI processes must pass that same candidate.
   Evidence artifacts are attempt-qualified, not agent-authored role-name flags.
   Revoke/expiry is rechecked at the server before publication credentials.
-- The regular demo-branch pipeline runs the unchanged full suite and publishes
-  or deploys only when the push tree equals the authorized repaired tree and
-  owner-controlled development/CD gates remain enabled. `main` is never
-  weakened. Rollback and stop actions remain owner-operated.
-- Recovery requires an unexpired owner window and manual two-parent merge
-  directly onto F (no squash/rebase/fast-forward), with both repaired candidate
-  and merge trees equal the authorized T tree. Publication/deployment gates use
-  T tools rather than the candidate's scripts. The migration is additive;
-  image rollback does not downgrade schema or rewrite player data. Owner
-  revocation disables existing claims as well as future claims.
+- Both dispatch modes require the fixed repository/event/MAIN workflow identity.
+  The owner-pinned full SHA T is checked before tooling checkout. The pipeline
+  executing at F must be byte-identical to T (the sole delta is the typo);
+  its immutable workflow SHA, current main tip and T checkout are rechecked
+  before authorization. Backend OIDC claims require this pipeline's exact ref
+  and F workflow SHA. Server-issued T/F must match the pinned workflow pair.
+  Fault reruns are rejected; one durable MAIN fault authorization per F survives
+  revocation/expiry, while repair claims bind one run/attempt. No failed-CI
+  trigger, fork PR, arbitrary ref or general failed-test bypass is supported.
+- The owner's manual merge of the tested one-line fix restores T's tree on
+  MAIN. That push runs the unchanged ordinary full suite → publish → development
+  deploy with the existing default-off CD gates. Agents never commit to MAIN or
+  merge. Stop/rollback remain owner-operated.
+- Existing migrations 0002/0003 and application data are preserved. Migration
+  0004 changes only the authorization branch check for new MAIN rows and adds
+  the replay-prevention index. Its NOT VALID check retains historical rows
+  without turning them into MAIN approvals; runtime refuses their old branch.
+  Because NOT VALID still constrains later updates, emergency revocation targets
+  only armed/claimed MAIN rows and leaves historical branch rows unchanged.
+  Image rollback must use a schema-compatible reviewed version; never downgrade
+  schema or rewrite player data. Revocation disables current and future MAIN claims.
 
 The current operational prerequisites are not all met. The user reports the
 corrective revision was deployed and login/save were checked; this is attributed
 evidence only. Issue #13 remains open, healthy rollback-pair verification is
-unavailable, the PR publication credential is absent, Copilot quota/entitlement
+unavailable, the PR publication credential is not validly configured, Copilot quota/entitlement
 is unverified, and demo settings are not enabled. The fault, alert, agent,
 publication, deployment, merge, rollback, and recovery chain has not been run.
 See the exact owner steps in
 [the development save-demo runbook](runbooks/development-save-demo.md).
+The reportedly misplaced token variable must be rotated/removed and recreated
+privately as the proper secret by the owner; do not inspect/copy it. All
+entitlement, free quota/no-overage, privacy, enablement and rollback/window gates
+default off. #12/#13 are open live prerequisites, not local implementation blockers.

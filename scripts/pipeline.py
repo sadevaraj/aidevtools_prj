@@ -113,37 +113,11 @@ class Render:
 
 
 def deployment_config(env):
-    demo_branch = (
-        env.get("GITHUB_EVENT_NAME") == "push"
-        and env.get("GITHUB_REF") == "refs/heads/demo/save-recovery"
-    )
-    if demo_branch:
-        require(env.get("DEMO_RECOVERY_ENABLED") == "true"
-                and env.get("RENDER_DEV_CD_ENABLED") == "true"
-                and env.get("RENDER_DEV_VERIFIED") == "true",
-                "CD BLOCKED: owner-enabled repaired demo branch is required.")
-        expected_tree = env.get("DEMO_EXPECTED_REPAIRED_TREE", "")
-        require(re.fullmatch(r"[0-9a-f]{40}", expected_tree),
-                "CD BLOCKED: exact authorized repaired tree is required.")
-        try:
-            actual_tree = subprocess.run(
-                ["git", "rev-parse", "HEAD^{tree}"], check=True,
-                capture_output=True, text=True, timeout=10,
-            ).stdout.strip()
-        except (OSError, subprocess.SubprocessError):
-            raise PipelineError("CD BLOCKED: current repaired tree could not be verified.") from None
-        require(actual_tree == expected_tree,
-                "CD BLOCKED: demo branch tree does not match the authorized repair.")
-        from demo_control import verify_merge
-        verify_merge(env, Path.cwd())
-    else:
-        require(env.get("RENDER_DEV_CD_ENABLED") == "true"
-                and env.get("RENDER_DEV_VERIFIED") == "true",
-                "CD BLOCKED: owner enablement and deployed verification flags required.")
+    require(env.get("RENDER_DEV_CD_ENABLED") == "true"
+            and env.get("RENDER_DEV_VERIFIED") == "true",
+            "CD BLOCKED: owner enablement and deployed verification flags required.")
     require(env.get("GITHUB_EVENT_NAME") == "push"
-            and env.get("GITHUB_REF") in {
-                "refs/heads/main", "refs/heads/demo/save-recovery"
-            }
+            and env.get("GITHUB_REF") == "refs/heads/main"
             and env.get("GITHUB_REPOSITORY") == "sadevaraj/aidevtools_prj",
             "CD BLOCKED: only this repository's authorized branch push is supported.")
     require(re.fullmatch(
@@ -165,7 +139,8 @@ def demo_deployment_config(env):
         and env.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
         and env.get("GITHUB_REF") == "refs/heads/main"
         and env.get("GITHUB_WORKFLOW_REF")
-        == "sadevaraj/aidevtools_prj/.github/workflows/development-save-demo.yml@refs/heads/main",
+        == "sadevaraj/aidevtools_prj/.github/workflows/pipeline.yml@refs/heads/main"
+        and env.get("PIPELINE_MODE") == "fault",
         "Demo deploy blocked: only the fixed owner-dispatched workflow on main is supported.",
     )
     for key in (

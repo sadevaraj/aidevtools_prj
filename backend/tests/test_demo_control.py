@@ -43,7 +43,7 @@ def demo_repo(tmp_path: Path) -> tuple[Path, str, str]:
     git(root, "add", ".")
     git(root, "commit", "-m", "healthy")
     trusted = git(root, "rev-parse", "HEAD")
-    git(root, "checkout", "-b", demo_control.BRANCH)
+    git(root, "checkout", demo_control.BRANCH)
     path.write_text(
         "def save_game():\n    " + demo_control.FAULT_LINE + "\n",
         encoding="utf-8",
@@ -66,6 +66,11 @@ def owner_environment():
         "GITHUB_REPOSITORY": demo_control.REPOSITORY,
         "GITHUB_EVENT_NAME": "workflow_dispatch",
         "GITHUB_REF": "refs/heads/main",
+        "PIPELINE_MODE": "fault",
+        "GITHUB_WORKFLOW_REF": demo_control.WORKFLOW_REF,
+        "GITHUB_RUN_ID": "123",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_ACTOR": "sadevaraj",
     }
 
 
@@ -204,7 +209,7 @@ def test_repaired_merge_gate_rejects_main_unknown_tree_wrong_target_and_disabled
     env["DEMO_EXPECTED_REPAIRED_TREE"] = expected
     demo_control.verify_merge(env, root)
     for key, value in (
-        ("GITHUB_REF", "refs/heads/main"),
+        ("GITHUB_REF", "refs/heads/feature"),
         ("DEMO_RECOVERY_ENABLED", "false"),
         ("DEMO_EXPECTED_REPAIRED_TREE", "0" * 40),
         ("DEMO_FAULT_REVISION", trusted),
@@ -243,9 +248,11 @@ def test_image_publication_checks_labels_and_records_registry_pair_without_runni
 
 def test_owner_arm_uses_only_fixed_endpoint_and_exact_built_pair(tmp_path):
     root, trusted, fault = demo_repo(tmp_path)
-    git(root, "update-ref", "refs/remotes/origin/demo/save-recovery", fault)
+    git(root, "update-ref", "refs/remotes/origin/main", fault)
+    git(root, "checkout", "--detach", trusted)
     env = {
         **owner_environment(), "TRUSTED_REVISION": trusted, "FAULT_REVISION": fault,
+        "GITHUB_SHA": fault, "GITHUB_WORKFLOW_SHA": fault,
         "BACKEND_DIGEST": "sha256:" + "1" * 64,
         "FRONTEND_DIGEST": "sha256:" + "2" * 64,
         "DEMO_ROLLBACK_BACKEND_DIGEST": "sha256:" + "3" * 64,
@@ -276,7 +283,7 @@ def test_owner_arm_uses_only_fixed_endpoint_and_exact_built_pair(tmp_path):
         return Response()
     demo_control.arm_demo(env, root, opener=opener)
     assert len(calls) == 1
-    git(root, "update-ref", "refs/remotes/origin/demo/save-recovery", trusted)
-    with pytest.raises(demo_control.DemoGateError, match="moved"):
+    git(root, "update-ref", "refs/remotes/origin/main", trusted)
+    with pytest.raises(demo_control.DemoGateError, match="bind"):
         demo_control.arm_demo(env, root, opener=opener)
     assert len(calls) == 1

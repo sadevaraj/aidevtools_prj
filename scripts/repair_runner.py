@@ -36,7 +36,7 @@ REPAIR_TEST = "test_deliberate_save_typo_reproduces_500_and_repaired_save_persis
 # Pin the complete, reviewed regression already shipped in test_api.py, not
 # candidate-controlled marker strings. Updating this requires trusted review.
 REPAIR_TEST_SHA256 = "787d9c664cb716bad7854cec66aa586001e2457d110c18ba12d698c3f07c275d"
-DEMO_BRANCH = "demo/save-recovery"
+DEMO_BRANCH = "main"
 DEMO_BACKEND_TARGET = "https://simple-sudoku-backend.onrender.com"
 DEMO_FRONTEND_TARGET = "https://simple-sudoku-frontend.onrender.com"
 REVISION = re.compile(r"^[0-9a-f]{40}$", re.ASCII)
@@ -113,6 +113,12 @@ def require_enabled(
         raise RepairGateError("Owner Copilot entitlement, quota, privacy, and cost gates are not enabled.")
     if environment.get("DEMO_CONTROL_REQUIRED") == "true" and environment.get("DEMO_CONTROL_ENABLED") != "true":
         raise RepairGateError("A durable owner demo authorization is required.")
+    if environment.get("DEMO_CONTROL_REQUIRED") == "true" and (
+        environment.get("PIPELINE_MODE") != "repair"
+        or environment.get("GITHUB_WORKFLOW_REF")
+        != f"{REPOSITORY}/.github/workflows/pipeline.yml@refs/heads/main"
+    ):
+        raise RepairGateError("Only the fixed pipeline repair dispatch is supported.")
     if environment.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
         raise RepairGateError("Only the trusted workflow_dispatch event is supported.")
     if environment.get("GITHUB_REPOSITORY") != REPOSITORY:

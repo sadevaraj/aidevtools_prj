@@ -27,9 +27,7 @@ COPY scripts/test.sh ./scripts/test.sh
 COPY scripts/pipeline.py ./scripts/pipeline.py
 COPY scripts/repair_runner.py ./scripts/repair_runner.py
 COPY scripts/demo_control.py ./scripts/demo_control.py
-COPY .github/workflows/development-save-demo.yml ./.github/workflows/development-save-demo.yml
 COPY .github/workflows/pipeline.yml ./.github/workflows/pipeline.yml
-COPY .github/workflows/repair.yml ./.github/workflows/repair.yml
 COPY .github/agents ./.github/agents
 
 FROM runtime AS production

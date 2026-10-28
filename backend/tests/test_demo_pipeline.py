@@ -15,7 +15,8 @@ def demo_environment():
         **environment(),
         "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
         "GITHUB_WORKFLOW_REF":
-            "sadevaraj/aidevtools_prj/.github/workflows/development-save-demo.yml@refs/heads/main",
+            "sadevaraj/aidevtools_prj/.github/workflows/pipeline.yml@refs/heads/main",
+        "PIPELINE_MODE": "fault",
         "DEMO_FAULT_DEPLOY_APPROVED": "true", "DEMO_ROLLBACK_PAIR_VERIFIED": "true",
         "DEMO_WINDOW_CONFIRMED": "true", "DEMO_IMAGE_PROVENANCE_VERIFIED": "true",
         "DEMO_TARGETS_CONFIRMED": "true",
@@ -74,7 +75,8 @@ def test_wrong_or_unverified_rollback_stops_before_any_deployment_post(tmp_path,
 @pytest.mark.parametrize("key,value", [
     ("DEMO_FAULT_DEPLOY_APPROVED", ""), ("DEMO_WINDOW_CONFIRMED", "false"),
     ("DEMO_ROLLBACK_EVIDENCE_URL", "https://attacker.invalid"),
-    ("GITHUB_REF", "refs/heads/demo/save-recovery"),
+    ("GITHUB_REF", "refs/heads/feature"),
+    ("PIPELINE_MODE", "repair"),
     ("GITHUB_WORKFLOW_REF", "other"), ("RENDER_API_KEY", ""),
 ])
 def test_missing_owner_or_workflow_gates_prevent_provider_access(tmp_path, key, value):

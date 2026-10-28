@@ -2,8 +2,12 @@
 
 **Status: implementation only; live chain NOT RUN.** Local PostgreSQL/CLI mocks
 are not Grafana, Copilot, GHCR, Render, rollback, or deployed recovery evidence.
-[Exact agent-recorded human approval](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6454530534)
-permits this bounded future exception, not execution during implementation.
+[Latest agent-recorded human approval, 28 October 2026 00:22 +01:00](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6456057621)
+records “i want grafana triggered fix” then “yes” to the MAIN-based Grafana chain:
+deliberate-error commit on MAIN → approved development fault deployment → failed
+Save → Grafana alert → tested Copilot fix PR MAIN → manual owner merge → normal
+deployment. Earlier branch/separate-workflow and CI-only designs are superseded,
+not delivered. Only local implementation/tests/docs are authorized now.
 Keep #20 open until its real live acceptance evidence exists.
 
 ## 1. Stop prerequisites — do not substitute flags for proof
@@ -22,7 +26,9 @@ that window, record in #13/#20:
 - Exact Sudoku development service IDs, image-backed runtime, fixed public
   frontend/backend origins, database/migration compatibility, and a tested
   owner-operated rollback. Never use Kanban/production. Image rollback does
-  not undo migrations; migration 0003 adds control tables/columns only. Do not
+  not undo migrations; 0002/0003 remain intact and 0004 adapts the authorization
+  branch constraint/replay index only. Historical approvals are not converted
+  into MAIN approvals. Do not
   downgrade schema or delete/reset player data as a demo repair.
 - Actual repository/Actions Copilot CLI entitlement, usable Free quota for
   coordinator/DEV and two independent review sessions, no paid overage, and
@@ -32,8 +38,10 @@ that window, record in #13/#20:
   `chat199/200 premium0` endpoint does not establish Actions CLI entitlement.
   The workflow does not discover quotas, purchase capacity, or enable billing.
 - Privately supplied, least-privilege credentials with independently verified
-  permissions. `ALERT_REPAIR_PR_TOKEN` is reported missing and
-  `ALERT_REPAIR_ENABLED` absent at handoff. Do not create credentials in an
+  permissions. The reportedly misplaced token in a repository **variable** is
+  NOT a valid secret. The owner must rotate it, remove that variable and
+  recreate the proper `ALERT_REPAIR_PR_TOKEN` secret privately, then verify its
+  permissions. Do not inspect/print/copy the old value or create credentials in an
   agent session, paste values into chat/issues, or print environment dumps.
 - Real telemetry reaches Grafana Cloud; the approved save-5xx firing rule and
   authenticated webhook contact point match the existing alert configuration.
@@ -55,13 +63,14 @@ in [the pipeline runbook](pipeline.md) and
 
 | Location | Required configuration |
 |---|---|
-| Development backend | `APP_ENV=development`, `COOKIE_SECURE=true`, migration 0003, `ALERT_REPAIR_ENABLED=true`, `DEMO_CONTROL_ENABLED=true`; private `ALERT_RECEIVER_TOKEN`, restricted Actions-dispatch `ALERT_DISPATCH_TOKEN`, distinct `DEMO_CONTROL_TOKEN` |
+| Development backend | `APP_ENV=development`, `COOKIE_SECURE=true`, migrations through 0004, `ALERT_REPAIR_ENABLED=true`, `DEMO_CONTROL_ENABLED=true`; private `ALERT_RECEIVER_TOKEN`, restricted Actions-dispatch `ALERT_DISPATCH_TOKEN`, distinct `DEMO_CONTROL_TOKEN` |
 | Repository variables | `ALERT_REPAIR_AUTH_URL=https://simple-sudoku-backend.onrender.com/api/alerts/repair/claim`; `ALERT_REPAIR_ENABLED=true`, `DEMO_CONTROL_ENABLED=true` |
 | Repair prerequisite variables | `REPAIR_COPILOT_OWNER_ENABLED`, `REPAIR_FREE_ENTITLEMENT_CONFIRMED`, `REPAIR_QUOTA_CONFIRMED`, `REPAIR_NO_OVERAGE_CONFIRMED`, `REPAIR_PROVIDER_TRANSMISSION_APPROVED` set to `true` **only after real evidence** |
 | Repository secret | Owner-managed `ALERT_REPAIR_PR_TOKEN` with verified repository contents/PR permissions; not a CLI credential |
-| `sudoku-development-demo` environment | Owner-reviewed dispatch access; private `DEMO_CONTROL_TOKEN` matching the backend and `RENDER_API_KEY`; verify the environment actually exists/restricts access rather than assuming its name enforces review |
+| Existing `sudoku-development` environment | Owner-reviewed MAIN dispatch access; private `DEMO_CONTROL_TOKEN` matching the backend and `RENDER_API_KEY`; verify actual access restrictions rather than assuming the name enforces review. No new demo environment |
 | Demo variables | `DEMO_FAULT_ENABLED`, `DEMO_FAULT_DEPLOY_APPROVED`, `DEMO_ROLLBACK_PAIR_VERIFIED`, `DEMO_WINDOW_CONFIRMED`, `DEMO_IMAGE_PROVENANCE_VERIFIED`, `DEMO_TARGETS_CONFIRMED` all `true`; verified #13 comment `DEMO_ROLLBACK_EVIDENCE_URL`; paired `DEMO_ROLLBACK_BACKEND_DIGEST` / `DEMO_ROLLBACK_FRONTEND_DIGEST`; explicit UTC `DEMO_EXPIRES_AT` no more than one hour ahead |
 | Delivery configuration | Exact `RENDER_DEV_BACKEND_SERVICE_ID`, `RENDER_DEV_FRONTEND_SERVICE_ID`, `RENDER_DEV_VERIFICATION_URL` equal to the rollback evidence URL; private environment-scoped Render key as in the pipeline runbook |
+| Trusted tooling variable | `DEMO_TRUSTED_REVISION=T`, the full reviewed healthy MAIN SHA including this single pipeline, scripts, pinned regression and migrations |
 
 Names in this table do not establish that secrets, permissions, environment
 protection or entitlement are configured. The fault workflow uses the normal
@@ -74,68 +83,55 @@ fallback provider, billing plan, broader tool allowlist, or bypass.
 
 ## 3. Create and validate T/F (owner only, after separate publication authority)
 
-First merge the reviewed **healthy** implementation into main through the usual
-delivery process. This DEV task does not commit/push it. Set `T` to the full
-healthy main SHA including these controls, and retain its paired rollback
-digests. The baseline `52db42e...` alone does not include them.
+First pass DEV → independent QA → Reviewer and merge the reviewed **healthy**
+implementation to MAIN through the usual process. This task does not
+commit/push/merge it. Deploy and verify that healthy T pair and rollback under
+#12/#13; set the immutable `DEMO_TRUSTED_REVISION` owner variable to T. Baseline
+`9cf1d8c...` alone is not the future T: it lacks these consolidated controls.
 
-From a clean owner checkout, with no unrelated edits:
-
-```sh
-git fetch origin main
-git switch --create demo/save-recovery origin/main
-T="$(git rev-parse HEAD)"
-```
-
-In `backend/app/main.py` change **only** the save handler's
+Only in a separately authorized owner window and clean owner checkout, create
+one deliberate fault commit F directly on MAIN after T. Change **only**
 `game.board = _validated_board(body.board, puzzle.clues)` to
-`game.board = _validated_board(body.borad, puzzle.clues)`, retaining indentation.
-Do not alter any tests, workflows, instructions, dependencies or other paths.
-Then the owner may run:
+`game.board = _validated_board(body.borad, puzzle.clues)` inside save_game,
+retaining indentation. Do not modify tests, workflows, instructions or other
+files. Inspect the exact diff, record T/F and window in #20, then the owner
+alone may publish F to MAIN. This is intentionally broken development source,
+not an agent action authorized by this local task.
+
+Normal F push CI **must fail** the ordinary save tests and publish/deploy
+nothing. Do not mark the failures expected or use continue-on-error.
+Do not advance MAIN during the demo. Failed CI does NOT trigger repair.
+
+After confirming the exact known fault and gates, only repository owner
+`sadevaraj` can dispatch fault mode (not a collaborator or a rerun). The owner dispatches
+the existing pipeline at MAIN F (future operations, NOT run here):
 
 ```sh
-git diff --check
-git diff -- backend/app/main.py
-git add -- backend/app/main.py
-git commit -m "Controlled development save-recovery fault"
-F="$(git rev-parse HEAD)"
-git push origin HEAD:refs/heads/demo/save-recovery
+gh workflow run pipeline.yml --ref main -f mode=fault
+gh run list --workflow pipeline.yml --limit 5
 ```
 
-Record T/F and owner window in #20. Main must remain at healthy T. Ordinary
-demo-branch CI **must fail** its normal save regressions on F and publish
-nothing. Do not remove failures, mark them expected, or set continue-on-error.
-Do not advance this branch while the demo runs.
+There are no arbitrary T/F/ref/command inputs. T is the owner-pinned full SHA;
+F is the dispatch's immutable MAIN SHA. Before executing the trusted helper,
+the workflow checks T's SHA syntax. T's helper then requires its own HEAD=T,
+current remote MAIN=F, workflow SHA=F and fixed repository/event/workflow ref.
+Only the exact one-commit T..F typo is permitted, so workflow, scripts and tests
+at F are identical to T. MAIN movement or any other fault stops.
 
-Using T's trusted script locally, with the owner attestations above supplied
-privately as environment variables (not credential values in command history):
-
-```sh
-git fetch origin main demo/save-recovery
-git show "$T:scripts/demo_control.py"
-```
-
-The exact-delta/ancestry gate runs again in the fixed trusted workflow:
-
-```sh
-gh workflow run development-save-demo.yml --ref main \
-  -f trusted_revision="$T" -f fault_revision="$F"
-gh run list --workflow development-save-demo.yml --limit 5
-```
-
-Dispatch requires main to still equal T. No generic ref/URL/command input is
-accepted. The workflow runs the **full ordinary suite on healthy T**, copies
-only the authorized F save source into T's disposable test harness, and proves
-authenticated HTTP 500, unchanged persisted board, and repaired save/reopen
-persistence against tmpfs PostgreSQL. That special fixture passing does **not**
-make ordinary CI on F green.
+The fault mode runs the **full ordinary suite on healthy T**, copies only F's
+authorized save source into T's disposable harness, and proves authenticated
+HTTP 500, unchanged board and repaired persistence on tmpfs PostgreSQL. That
+special fixture does **not** make F's ordinary CI green or create a general
+failed-test bypass.
 
 Unprivileged jobs build both F images into same-run/attempt archives. A fresh T
 publisher rechecks branch/delta/window and image source/revision labels, then
 pushes only those archives and records immutable digests. A trusted owner
 environment step arms the healthy server with the exact T/F, repaired tree,
 fixed targets, fault/rollback pair, evidence URL and expiry **before deployment**.
-Arming an already-active demo returns conflict. Deployment preflight refuses a
+Fault dispatch reruns (attempt >1) are rejected. Arming an already-active demo
+or any previously authorized MAIN F returns conflict, even after expiry/revoke.
+Deployment preflight refuses a
 current healthy pair different from the verified rollback digests, wrong
 service identity, missing health, expired window, or incomplete image pair.
 Partial/ambiguous publication or deploy must be treated as STOP, not retried.
@@ -152,10 +148,14 @@ separately. There is no automatic production action or database rewrite.
    evidence. Do not export cookies, passwords, bearer headers or board data
    into public evidence. Business-user accounts are not demonstration fixtures.
 2. Grafana sends only to the fixed authenticated receiver. The server associates
-   the incident with its armed T/F record. It dispatches `repair.yml` on main
-   with opaque incident ID and server expiry, never a payload-selected ref.
+   the incident with its armed T/F record. It dispatches only `pipeline.yml` on
+   MAIN with `mode=repair`, opaque incident ID and server expiry, never a
+   payload-selected ref or failed-CI substitute.
    The alert TTL is at most 30 minutes and never exceeds the owner's window.
-3. Authorization consumes a signed OIDC run/attempt claim. Candidate Copilot
+3. Authorization uses the same pinned T tooling/current F workflow checks as
+   fault mode; server-issued T/F must equal that pair. The server verifies
+   signed OIDC for `pipeline.yml@refs/heads/main`, workflow SHA=F and one
+   run/attempt claim. Candidate Copilot
    operates on F in a resource-limited container using read-only T instructions.
    Only the exact typo correction is accepted. The staged repaired tree must
    equal T; T's full harness runs and records the F/patch/tree/run/attempt
@@ -164,14 +164,13 @@ separately. There is no automatic production action or database rewrite.
    moved refs, replay/reruns, unsupported patches and expired/revoked claims
    block publication. Do not rerun an already-consumed attempt to bypass it.
 4. The credentialed publisher executes only T tools, rechecks server
-   authorization and the live demo tip, and opens a PR with base
-   `demo/save-recovery` at F. No agent auto-merges. Inspect the PR's one-line
+   authorization and the live MAIN tip, and opens a temporary repair branch/PR
+   with base MAIN at F. Publisher never executes candidate code; no permanent
+   demo branch/environment exists. No agent auto-merges. Inspect the PR's one-line
    diff, normal PR CI, runtime receipt, QA/Reviewer evidence and current base.
    Branch movement at any point means STOP; there is no remote branch lock.
-5. Before merging, set owner variables `DEMO_RECOVERY_ENABLED=true`,
-   `DEMO_TRUSTED_REVISION=T`, `DEMO_FAULT_REVISION=F`,
-   `DEMO_EXPECTED_REPAIRED_TREE` to T's tree
-   (`git rev-parse "$T^{tree}"`), and the still-unexpired `DEMO_EXPIRES_AT`.
+5. Before merging confirm the repaired PR tree equals T, all runtime evidence
+   is current, the owner window remains unexpired and MAIN still equals F.
    Enable ordinary `RENDER_DEV_VERIFIED`/`RENDER_DEV_CD_ENABLED` only using real
    #13 evidence and the approved window. Enablement is owner authority, not
    supplied by Grafana or an agent.
@@ -180,7 +179,8 @@ separately. There is no automatic production action or database rewrite.
    PR number `N`, the owner command is `gh pr merge N --merge` (no `--auto`).
    The two-parent merge's first parent must be F and its tree and repair-parent
    tree must equal T. Any extra commit/path, stale F/T, or expired window blocks
-   delivery. The ordinary full suite runs first, then gated paired publication,
+   the owner's acceptance. Ordinary main delivery uses no special repaired-tree
+   bypass: the ordinary full suite runs first, then gated paired publication,
    then exact-digest development deployment. Record merge SHA, successful run,
    pair artifact, both actual Render deploy IDs/resolved digests and health.
 7. Verify actual authenticated save, logout/login/reopen, refresh and backend
@@ -202,7 +202,7 @@ the owner's decision.
 
 Immediately cancel the affected Actions runs in the UI or
 `gh run cancel RUN_ID`; disable `DEMO_FAULT_ENABLED`,
-`DEMO_FAULT_DEPLOY_APPROVED`, `DEMO_RECOVERY_ENABLED`, both ordinary CD flags
+`DEMO_FAULT_DEPLOY_APPROVED`, both ordinary CD flags
 and repair enablement. Revoke the durable authorization while the owner control
 route is still enabled. With the existing secret present only in private
 process environment, the owner can use:

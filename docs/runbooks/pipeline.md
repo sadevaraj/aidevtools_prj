@@ -2,13 +2,18 @@
 
 ## Readiness and authority
 
-The approved [#20 development-demo exception](development-save-demo.md) adds
-ordinary tests on `demo/save-recovery`, plus default-off publication/development
-CD **only** for its owner-authorized exact repaired merge tree. Fault F stays red.
-The separate owner-dispatched fault publication workflow does not bypass or
-weaken the ordinary test job. Follow the dedicated runbook for expiring T/F
-bindings, durable claim/revocation, independent same-candidate runtime evidence,
-manual non-squash merge and verified paired rollback. Main behavior is unchanged.
+The [latest #20 approval, 28 October 2026 00:22 +01:00](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6456057621)
+supersedes branch-based and CI-only designs. Only this existing pipeline handles
+normal PR/main CI/CD, an explicit `workflow_dispatch mode=fault` development
+exception and authenticated Grafana `mode=repair` dispatch. A deliberate exact
+typo F follows healthy T **on MAIN**; normal F CI stays red and cannot publish.
+The fault mode separately validates the exact T/F delta and owner gates; it
+never makes a failed ordinary test job green. Repair is triggered by the genuine
+Grafana receiver/outbox, never by failed CI. The tested fix PR targets MAIN and
+requires manual owner merge, then ordinary successful tests → publish → deploy.
+No permanent demo branch/environment or other workflow is used. Follow the
+dedicated [owner runbook](development-save-demo.md) for all live prerequisites,
+immutable workflow/tooling identity, credential correction and stop/rollback.
 Local tests do not establish remote entitlement, delivery, or recovery.
 
 Issue [#12](https://github.com/sadevaraj/aidevtools_prj/issues/12) implements this
@@ -24,9 +29,9 @@ Render deployment is claimed by this implementation. Existing manually published
 images do not verify the new pipeline. Issue #12 cannot close without its actual
 remote evidence and independent QA/review. Issue
 [#13](https://github.com/sadevaraj/aidevtools_prj/issues/13) remains pending:
-the hosted frontend's latest reported proxied API check was HTTP 502. The owner
-must deploy the reviewed HTTPS proxy fix and verify the full deployed journey
-and rollback before enabling CD. Local telemetry is **not Render telemetry**.
+the 27 October health checks returned HTTP 200, but health alone does not verify
+the full deployed journey, persistence or rollback. The owner must complete
+that evidence before enabling CD. Local telemetry is **not Render telemetry**.
 
 ## Workflow
 

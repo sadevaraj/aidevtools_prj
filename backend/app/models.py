@@ -90,6 +90,10 @@ class DevelopmentDemoAuthorization(Base):
 
     __tablename__ = "development_demo_authorizations"
     __table_args__ = (
+        Index(
+            "uq_demo_main_fault", "fault_revision", unique=True,
+            postgresql_where=text("branch = 'main'"),
+        ),
         CheckConstraint(
             "trusted_revision ~ '^[0-9a-f]{40}$' AND "
             "fault_revision ~ '^[0-9a-f]{40}$' AND "
@@ -109,7 +113,7 @@ class DevelopmentDemoAuthorization(Base):
             name="ck_demo_authorization_targets",
         ),
         CheckConstraint(
-            "branch = 'demo/save-recovery'",
+            "branch = 'main'",
             name="ck_demo_authorization_branch",
         ),
         CheckConstraint(
