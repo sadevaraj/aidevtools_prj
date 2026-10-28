@@ -27,6 +27,18 @@ normal deploy**. This supersedes both the earlier branch-based design and
 withdrawn CI-only alternative, not evidence that either was completed.
 Only LOCAL implementation/tests/docs are authorized now. The historical #19
 plan below is retained as history; this current section takes precedence.
+The [28 October ~08:49 owner supplement](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6463679181)
+further permits explicit `REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED=true`
+only in the durable development-control-required repair path, without claiming
+unknown entitlement/quota as confirmed. Mandatory no-overage authorization and
+provider controls remain; flags do not enforce billing or guarantee dollar safety.
+No paid enablement, provider smoke/eligibility call, retry or model loop is approved.
+The real Grafana repair is the first model attempt (candidate plus required
+independent QA/Reviewer sessions); 15 minutes from fault deployment, then stop/
+revoke/restore compatible healthy images on failure or timeout. All other unknowns
+still stop. Changed tooling requires NEW reviewed healthy T / exact child F,
+recomputed pins/tree/images/server authorization; never patch old F or reuse
+the old T pin. The runbook retains old healthy recovery digests and evidence.
 F must directly follow healthy immutable T on MAIN and change only `body.board`
 to `body.borad` in save_game. Ordinary CI still fails on F. Product/guards and
 original tests are not weakened.
@@ -60,9 +72,10 @@ MAIN write by agents. Unknown faults stop; no provider runs in local tests.
 Implementation -> independent Prj_QA -> Prj_Reviewer is still mandatory on the
 same working diff and baseline. Local checks do **not** close #20's live gates.
 Follow [the concrete owner runbook](docs/runbooks/development-save-demo.md).
-Issues #12/#13, healthy rollback proof, credential permissions, CLI entitlement,
-available free quota/no-overage, and the explicit test window remain owner/live
-prerequisites. Unknown/true flags and token presence alone are not evidence.
+Issues #12/#13, healthy rollback proof, credential permissions, no-overage controls,
+and the explicit test window remain owner/live prerequisites. CLI entitlement/
+available quota require verification or the exact approved access-risk alternative
+above. Unknown/true flags and token presence alone are not evidence.
 The token reportedly placed in a repository variable is NOT a valid secret:
 owner rotation, removal of that variable and private recreation as the proper
 secret are required before live work; this task neither reads nor changes it.

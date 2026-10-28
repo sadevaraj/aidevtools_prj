@@ -88,6 +88,86 @@ def test_runner_is_disabled_without_explicit_owner_free_quota_and_privacy_gates(
             repair_runner.require_enabled(blocked, INCIDENT, EXPIRY)
 
 
+def unverified_access_environment():
+    env = enabled_environment()
+    env.pop("REPAIR_FREE_ENTITLEMENT_CONFIRMED")
+    env.pop("REPAIR_QUOTA_CONFIRMED")
+    return {
+        **env,
+        "REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED": "true",
+        "DEMO_CONTROL_REQUIRED": "true",
+        "DEMO_CONTROL_ENABLED": "true",
+        "PIPELINE_MODE": "repair",
+        "GITHUB_WORKFLOW_REF":
+            "sadevaraj/aidevtools_prj/.github/workflows/pipeline.yml@refs/heads/main",
+    }
+
+
+@pytest.mark.parametrize("confirmation", [None, "", "false", "unknown"])
+def test_explicit_controlled_access_risk_does_not_fabricate_confirmations(confirmation):
+    env = unverified_access_environment()
+    if confirmation is not None:
+        env["REPAIR_FREE_ENTITLEMENT_CONFIRMED"] = confirmation
+        env["REPAIR_QUOTA_CONFIRMED"] = confirmation
+    before = dict(env)
+    repair_runner.require_enabled(env, INCIDENT, EXPIRY)
+    assert env == before
+
+
+@pytest.mark.parametrize(("key", "value"), [
+    ("REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED", None),
+    ("REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED", "false"),
+    ("REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED", "TRUE"),
+    ("DEMO_CONTROL_REQUIRED", None),
+    ("DEMO_CONTROL_REQUIRED", "false"),
+    ("DEMO_CONTROL_ENABLED", "false"),
+    ("PIPELINE_MODE", "fault"),
+    ("GITHUB_WORKFLOW_REF", "attacker/repo/.github/workflows/pipeline.yml@refs/heads/main"),
+    ("GITHUB_EVENT_NAME", "pull_request"),
+    ("GITHUB_REF", "refs/heads/feature"),
+    ("GITHUB_REPOSITORY", "attacker/repo"),
+    ("REPAIR_NO_OVERAGE_CONFIRMED", None),
+    ("REPAIR_NO_OVERAGE_CONFIRMED", "false"),
+    ("REPAIR_PROVIDER_TRANSMISSION_APPROVED", "false"),
+    ("REPAIR_COPILOT_OWNER_ENABLED", "false"),
+    ("ALERT_REPAIR_ENABLED", "false"),
+    ("GITHUB_TOKEN", None),
+])
+def test_unverified_access_never_bypasses_other_gates(key, value):
+    env = unverified_access_environment()
+    if value is None:
+        env.pop(key, None)
+    else:
+        env[key] = value
+    with pytest.raises(repair_runner.RepairGateError):
+        repair_runner.require_enabled(env, INCIDENT, EXPIRY)
+
+
+@pytest.mark.parametrize(("incident", "expiry"), [
+    ("invalid", EXPIRY),
+    (INCIDENT, "invalid"),
+    (INCIDENT, "2000-01-01T00:00:00+00:00"),
+    (INCIDENT, "2999-01-01T00:00:00+00:00"),
+])
+def test_unverified_access_preserves_incident_and_expiry_checks(incident, expiry):
+    with pytest.raises(repair_runner.RepairGateError):
+        repair_runner.require_enabled(unverified_access_environment(), incident, expiry)
+
+
+@pytest.mark.parametrize(("key", "value"), [
+    ("ALERT_REPAIR_AUTHORIZED", "false"),
+    ("GITHUB_RUN_ATTEMPT", "2"),
+    ("ALERT_REPAIR_AUTH_RUN_ID", "5678"),
+])
+def test_unverified_access_still_requires_current_one_time_authorization(tmp_path, key, value):
+    env = {**unverified_access_environment(), key: value}
+    with pytest.raises(repair_runner.RepairGateError, match="authorization"):
+        repair_runner.run_candidate(
+            ROOT, INCIDENT, EXPIRY, tmp_path / "candidate.patch", environment=env,
+            process_runner=lambda *_args, **_kwargs: pytest.fail("No provider call permitted"),
+        )
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [

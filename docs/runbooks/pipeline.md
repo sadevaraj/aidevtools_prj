@@ -16,6 +16,17 @@ dedicated [owner runbook](development-save-demo.md) for all live prerequisites,
 immutable workflow/tooling identity, credential correction and stop/rollback.
 Local tests do not establish remote entitlement, delivery, or recovery.
 
+The [~08:49 owner supplement](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6463679181)
+permits explicit `REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED=true` only in
+the durable development-control-required repair path, not ordinary/fault jobs.
+It accepts unknown access without asserting Free entitlement/quota. Mandatory
+no-paid/no-overage controls remain; flags do not enforce provider billing.
+No provider smoke or retry: the real Grafana repair is the first model attempt,
+including required QA/Reviewer sessions, with a 15-minute owner window from
+fault deployment and rollback on failure. Changed trusted tooling needs NEW
+reviewed healthy T, exact child F, pins/tree/images/server authorization.
+See the owner runbook; this local change authorizes no live operations.
+
 Issue [#12](https://github.com/sadevaraj/aidevtools_prj/issues/12) implements this
 pipeline under the [agent-recorded human approval](https://github.com/sadevaraj/aidevtools_prj/issues/12#issuecomment-6428965305).
 That approval permits **implementation before #13**, not deployment before

@@ -10,6 +10,15 @@ deployment. Earlier branch/separate-workflow and CI-only designs are superseded,
 not delivered. Only local implementation/tests/docs are authorized now.
 Keep #20 open until its real live acceptance evidence exists.
 
+The [agent-recorded owner approval, 28 October 2026 ~08:49 +01:00](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6463679181)
+adds one explicit **unverified-access, one-attempt** alternative below. The real
+Grafana-triggered repair must be the first model attempt: no provider smoke,
+eligibility probe, retry, or recursive model loop. Candidate and mandatory
+independent QA/Reviewer sessions constitute that one repair attempt. The owner
+accepts unknown access/failure and rollback within **15 minutes from fault
+deployment**. Deterministic local tests remain required. This local patch does
+not authorize live execution, paid enablement, account changes, or auto-merge.
+
 ## 1. Stop prerequisites — do not substitute flags for proof
 
 The owner must explicitly approve a short development-only window, its stop
@@ -30,10 +39,20 @@ that window, record in #13/#20:
   branch constraint/replay index only. Historical approvals are not converted
   into MAIN approvals. Do not
   downgrade schema or delete/reset player data as a demo repair.
-- Actual repository/Actions Copilot CLI entitlement, usable Free quota for
+- Either actual repository/Actions Copilot CLI entitlement, usable Free quota for
   coordinator/DEV and two independent review sessions, no paid overage, and
   explicit approval to send this public repository's source to Copilot.
-  Unknown means **STOP**. `true` variables are owner attestations, not probes;
+  **Or**, only in the existing durable development-control-required repair
+  path, explicit owner `REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED=true`
+  accepts unknown entitlement/quota for the single attempt above. Leave
+  `REPAIR_FREE_ENTITLEMENT_CONFIRMED` / `REPAIR_QUOTA_CONFIRMED` unset/false
+  unless actually verified; never fabricate confirmations. Mandatory
+  `REPAIR_NO_OVERAGE_CONFIRMED=true` requires the owner's no-paid/no-overage
+  authorization and provider-side controls; privacy and enablement gates remain.
+  These flags do **not** enforce provider billing, guarantee free execution, or
+  prove dollar safety. Do not enable paid usage. If no-paid controls cannot be
+  established, **STOP** even on the unverified-access path.
+  Otherwise unknown access means **STOP**. `true` variables are owner attestations, not probes;
   token presence is not proof of permissions. The undocumented
   `chat199/200 premium0` endpoint does not establish Actions CLI entitlement.
   The workflow does not discover quotas, purchase capacity, or enable billing.
@@ -51,8 +70,10 @@ that window, record in #13/#20:
   revision/diff, including product/guard comparison and approval evidence.
   Local role evidence does not establish the future runtime agent gates.
 
-If any prerequisite is unavailable, keep all flags off and record BLOCKED. No
-live fault or paid/possibly-paid eligibility request is a valid experiment.
+If any other prerequisite is unavailable, keep all flags off and record BLOCKED.
+Only the exact approved access-risk exception supersedes unknown-access-means-stop;
+unknown defects and other unknown prerequisites still stop. No extra provider
+smoke/eligibility request is permitted.
 
 ## 2. Owner configuration (future authorized operations only)
 
@@ -65,7 +86,8 @@ in [the pipeline runbook](pipeline.md) and
 |---|---|
 | Development backend | `APP_ENV=development`, `COOKIE_SECURE=true`, migrations through 0004, `ALERT_REPAIR_ENABLED=true`, `DEMO_CONTROL_ENABLED=true`; private `ALERT_RECEIVER_TOKEN`, restricted Actions-dispatch `ALERT_DISPATCH_TOKEN`, distinct `DEMO_CONTROL_TOKEN` |
 | Repository variables | `ALERT_REPAIR_AUTH_URL=https://simple-sudoku-backend.onrender.com/api/alerts/repair/claim`; `ALERT_REPAIR_ENABLED=true`, `DEMO_CONTROL_ENABLED=true` |
-| Repair prerequisite variables | `REPAIR_COPILOT_OWNER_ENABLED`, `REPAIR_FREE_ENTITLEMENT_CONFIRMED`, `REPAIR_QUOTA_CONFIRMED`, `REPAIR_NO_OVERAGE_CONFIRMED`, `REPAIR_PROVIDER_TRANSMISSION_APPROVED` set to `true` **only after real evidence** |
+| Mandatory repair variables | `REPAIR_COPILOT_OWNER_ENABLED`, `REPAIR_NO_OVERAGE_CONFIRMED`, `REPAIR_PROVIDER_TRANSMISSION_APPROVED` set to `true` only with owner authorization/control/evidence; flags do not enforce billing |
+| Access policy alternatives | Verified: `REPAIR_FREE_ENTITLEMENT_CONFIRMED=true` and `REPAIR_QUOTA_CONFIRMED=true` with real evidence. Approved unverified path only: `REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED=true`, without asserting unknown confirmations; requires `DEMO_CONTROL_REQUIRED=true` (fixed pipeline), `DEMO_CONTROL_ENABLED=true`, repair mode and all existing durable checks |
 | Repository secret | Owner-managed `ALERT_REPAIR_PR_TOKEN` with verified repository contents/PR permissions; not a CLI credential |
 | Existing `sudoku-development` environment | Owner-reviewed MAIN dispatch access; private `DEMO_CONTROL_TOKEN` matching the backend and `RENDER_API_KEY`; verify actual access restrictions rather than assuming the name enforces review. No new demo environment |
 | Demo variables | `DEMO_FAULT_ENABLED`, `DEMO_FAULT_DEPLOY_APPROVED`, `DEMO_ROLLBACK_PAIR_VERIFIED`, `DEMO_WINDOW_CONFIRMED`, `DEMO_IMAGE_PROVENANCE_VERIFIED`, `DEMO_TARGETS_CONFIRMED` all `true`; verified #13 comment `DEMO_ROLLBACK_EVIDENCE_URL`; paired `DEMO_ROLLBACK_BACKEND_DIGEST` / `DEMO_ROLLBACK_FRONTEND_DIGEST`; explicit UTC `DEMO_EXPIRES_AT` no more than one hour ahead |
@@ -87,7 +109,20 @@ First pass DEV → independent QA → Reviewer and merge the reviewed **healthy*
 implementation to MAIN through the usual process. This task does not
 commit/push/merge it. Deploy and verify that healthy T pair and rollback under
 #12/#13; set the immutable `DEMO_TRUSTED_REVISION` owner variable to T. Baseline
-`9cf1d8c...` alone is not the future T: it lacks these consolidated controls.
+`692bb618c1325a4edf97b4e66ab23cefb6916583` is the old healthy T, not the
+future T for this changed policy. Changing trusted scripts/workflow/tests requires
+a **NEW reviewed healthy T**, then a **NEW exact one-line child F**. Recompute
+the trusted pin, expected repaired tree, immutable image pair and server
+authorization. Never patch old faulty `4b84702479fcf31f2277732397ee48069c8dddfb`
+in place or reuse its old T pin to authorize changed tooling. No such commit,
+push, fault recreation or live configuration is performed by this local task.
+
+The old published healthy recovery pair for `692bb6…` is retained:
+backend `sha256:b0ece8540edd1a752f47429bdef4b26db189e4193b8d502776b4a097dc275553`,
+frontend `sha256:b85005dba53d68733ec44698715d63e9ff59fc5267022f596bbb7ad249e54731`.
+[Owner-reported deployment/save evidence](https://github.com/sadevaraj/aidevtools_prj/issues/13#issuecomment-6463370504)
+is not independent rollback verification. That recovery pair can remain only
+if schema/control compatible; image rollback is never a database downgrade.
 
 Only in a separately authorized owner window and clean owner checkout, create
 one deliberate fault commit F directly on MAIN after T. Change **only**
@@ -159,7 +194,9 @@ separately. There is no automatic production action or database rewrite.
    operates on F in a resource-limited container using read-only T instructions.
    Only the exact typo correction is accepted. The staged repaired tree must
    equal T; T's full harness runs and records the F/patch/tree/run/attempt
-   receipt. Two distinct read-only QA and Reviewer CLI sessions must return
+   receipt, including `unverified_access_one_attempt_approved` when the owner
+   accepts unknown access (not an entitlement/quota or billing claim).
+   Two distinct read-only QA and Reviewer CLI sessions must return
    current-candidate PASS with no findings. Stale/failed/missing evidence,
    moved refs, replay/reruns, unsupported patches and expired/revoked claims
    block publication. Do not rerun an already-consumed attempt to bypass it.
@@ -194,10 +231,15 @@ owner boolean substitutes for this live evidence.
 
 ## 5. Stop, revoke and owner rollback
 
-Stop for quota/entitlement/privacy uncertainty, wrong targets, changed refs,
+Stop for access uncertainty unless covered by the exact approved one-attempt
+exception above; privacy/no-paid-control uncertainty always stops. Stop for wrong targets, changed refs,
 missing credentials/permissions/evidence, expired window, tests/reviews failure,
-unknown fault, timeout or ambiguous provider response. Never start a recursive
-repair, widen scope, enable billing, retry deployment POSTs, or merge without
+unknown fault, provider access/quota failure, timeout or ambiguous provider response.
+The owner window is 15 minutes from fault deployment, not 15 minutes from the
+first model response. On failure/timeout restore compatible healthy images;
+do not retry the model attempt or run a smoke first. Clear
+`REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED` along with repair enablement.
+Never start a recursive repair, widen scope, enable billing, retry deployment POSTs, or merge without
 the owner's decision.
 
 Immediately cancel the affected Actions runs in the UI or

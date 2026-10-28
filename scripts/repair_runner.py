@@ -93,6 +93,15 @@ def verify_agent_definitions(root: Path) -> None:
                 raise RepairGateError("Coordinator agent allow-list is incomplete.")
 
 
+def _unverified_access_one_attempt_approved(environment: dict[str, str]) -> bool:
+    """Owner access-risk attestation, not provider entitlement or billing proof."""
+    return all(environment.get(name) == "true" for name in (
+        "REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED",
+        "DEMO_CONTROL_REQUIRED",
+        "DEMO_CONTROL_ENABLED",
+    ))
+
+
 def require_enabled(
     environment: dict[str, str],
     incident_id: str,
@@ -100,17 +109,19 @@ def require_enabled(
     *,
     require_copilot_token: bool = True,
 ) -> None:
-    """Fail closed unless the owner explicitly enabled every free-only gate."""
+    """Require owner gates; unknown access needs the controlled one-attempt approval."""
     required = (
         "ALERT_REPAIR_ENABLED",
         "REPAIR_COPILOT_OWNER_ENABLED",
-        "REPAIR_FREE_ENTITLEMENT_CONFIRMED",
-        "REPAIR_QUOTA_CONFIRMED",
         "REPAIR_NO_OVERAGE_CONFIRMED",
         "REPAIR_PROVIDER_TRANSMISSION_APPROVED",
     )
     if any(environment.get(name) != "true" for name in required):
         raise RepairGateError("Owner Copilot entitlement, quota, privacy, and cost gates are not enabled.")
+    if not all(environment.get(name) == "true" for name in (
+        "REPAIR_FREE_ENTITLEMENT_CONFIRMED", "REPAIR_QUOTA_CONFIRMED",
+    )) and not _unverified_access_one_attempt_approved(environment):
+        raise RepairGateError("Verified access or explicit controlled one-attempt access-risk approval is required.")
     if environment.get("DEMO_CONTROL_REQUIRED") == "true" and environment.get("DEMO_CONTROL_ENABLED") != "true":
         raise RepairGateError("A durable owner demo authorization is required.")
     if environment.get("DEMO_CONTROL_REQUIRED") == "true" and (
@@ -661,7 +672,7 @@ def validate_test_receipt_data(receipt, patch_hash: str, fault_revision: str, en
             "run_id": env.get("GITHUB_RUN_ID"),
             "run_attempt": env.get("GITHUB_RUN_ATTEMPT"),
         }.items()
-    ):
+    ) or receipt.get("unverified_access_one_attempt_approved", False) is not _unverified_access_one_attempt_approved(env):
         raise RepairGateError("Trusted same-candidate test receipt is missing or stale.")
     return receipt
 
@@ -706,6 +717,7 @@ def test_repaired_candidate(trusted: Path, candidate: Path, patch: Path, output:
         "fault_revision": context["fault_revision"],
         "trusted_revision": context["trusted_revision"], "repaired_tree": expected,
         "run_id": env.get("GITHUB_RUN_ID"), "run_attempt": env.get("GITHUB_RUN_ATTEMPT"),
+        "unverified_access_one_attempt_approved": _unverified_access_one_attempt_approved(env),
     }
     output.write_text(json.dumps(receipt) + "\n")
 

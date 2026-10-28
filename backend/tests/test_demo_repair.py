@@ -14,6 +14,7 @@ from test_demo_control import demo_control, demo_repo, git, owner_environment
 from test_repair_runner import (
     repair_runner, ROOT, MAIN_PATCH, TRUSTED_TEST_SOURCE, enabled_environment,
     INCIDENT, EXPIRY,
+    unverified_access_environment,
 )
 
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -81,6 +82,115 @@ def receipt(env, patch):
         "repaired_tree": env["ALERT_REPAIR_AUTH_EXPECTED_REPAIRED_TREE"],
         "run_id": env["GITHUB_RUN_ID"], "run_attempt": env["GITHUB_RUN_ATTEMPT"],
     }
+
+
+@pytest.mark.parametrize("unverified", [False, True])
+def test_access_risk_marker_survives_trusted_receipt_and_role_evidence(
+    tmp_path, monkeypatch, unverified,
+):
+    env = {
+        **environment(),
+        **(unverified_access_environment() if unverified else {}),
+    }
+    data = receipt(env, MAIN_PATCH)
+    data["unverified_access_one_attempt_approved"] = unverified
+    patch_hash = hashlib.sha256(MAIN_PATCH).hexdigest()
+    assert repair_runner.validate_test_receipt_data(data, patch_hash, "b" * 40, env) == data
+    for bad in (not unverified, "true", 1, None):
+        with pytest.raises(repair_runner.RepairGateError, match="receipt"):
+            repair_runner.validate_test_receipt_data(
+                {**data, "unverified_access_one_attempt_approved": bad},
+                patch_hash, "b" * 40, env,
+            )
+    if unverified:
+        with pytest.raises(repair_runner.RepairGateError, match="receipt"):
+            repair_runner.validate_test_receipt_data(
+                receipt(env, MAIN_PATCH), patch_hash, "b" * 40, env,
+            )
+
+    patch = tmp_path / "candidate.patch"
+    patch.write_bytes(MAIN_PATCH)
+    tests = tmp_path / "tests.json"
+    tests.write_text(json.dumps(data))
+    output = tmp_path / "evidence.json"
+
+    def cli(command, **kwargs):
+        if command[-1] == "--version":
+            return SimpleNamespace(stdout=f"GitHub Copilot CLI {repair_runner.CLI_VERSION}.")
+        return SimpleNamespace(stdout=json.dumps({
+            "verdict": "PASS", "fault_revision": "b" * 40,
+            "patch_sha256": patch_hash, "findings": [],
+        }))
+
+    evidence = repair_runner.collect_role_evidence(
+        ROOT, patch, "b" * 40, output, environment=env, process_runner=cli,
+        executable_finder=lambda *_args, **_kwargs: None, test_receipt=tests,
+    )
+    assert evidence["tests"] == data
+    monkeypatch.setattr(repair_runner.os, "environ", env)
+    repair_runner.verify_evidence_file(patch, output, "b" * 40)
+    evidence["tests"]["unverified_access_one_attempt_approved"] = not unverified
+    output.write_text(json.dumps(evidence))
+    with pytest.raises(repair_runner.RepairGateError, match="evidence"):
+        repair_runner.verify_evidence_file(patch, output, "b" * 40)
+
+
+@pytest.mark.parametrize("unverified", [False, True])
+def test_trusted_harness_records_access_risk_without_provider_call(tmp_path, monkeypatch, unverified):
+    import demo_control as runtime_demo_control
+
+    env = {**environment(), **(unverified_access_environment() if unverified else {})}
+    monkeypatch.setattr(repair_runner.os, "environ", env)
+    monkeypatch.setattr(runtime_demo_control, "expected_repaired_tree", lambda *_args: "c" * 40)
+    trusted, candidate = tmp_path / "trusted", tmp_path / "candidate"
+    patch, output = tmp_path / "candidate.patch", tmp_path / "receipt.json"
+    patch.write_bytes(MAIN_PATCH)
+    regression = repair_runner._regression_test_path(ROOT)
+    monkeypatch.setattr(repair_runner, "_regression_test_path", lambda _root: regression)
+    calls = []
+
+    def local_process(command, **kwargs):
+        calls.append(command)
+        if command == ["sh", "scripts/test.sh"]:
+            assert kwargs["cwd"] == trusted
+            return SimpleNamespace(returncode=0)
+        assert command[0] == "git"
+        result = ""
+        if command[-2:] == ["rev-parse", "HEAD"]:
+            result = "a" * 40 if command[2] == str(trusted) else "b" * 40
+        elif command[-1] == "write-tree":
+            result = "c" * 40
+        return SimpleNamespace(stdout=result)
+
+    monkeypatch.setattr(repair_runner.subprocess, "run", local_process)
+    repair_runner.test_repaired_candidate(trusted, candidate, patch, output)
+    assert calls[-1] == ["sh", "scripts/test.sh"]
+    assert json.loads(output.read_text())["unverified_access_one_attempt_approved"] is unverified
+
+
+def test_pipeline_scopes_access_approval_to_existing_repair_gates_and_receipt():
+    workflow = yaml.load(
+        (ROOT / ".github/workflows/pipeline.yml").read_text(), Loader=yaml.BaseLoader,
+    )
+    flag = "REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED"
+    value = "${{ vars." + flag + " }}"
+    assert flag not in workflow["env"]  # Never reaches ordinary or fault jobs.
+    jobs = workflow["jobs"]
+    for name in ("authorization", "candidate", "verify", "publish-pr"):
+        job = jobs[name]
+        for step in job["steps"]:
+            command = step.get("run", "")
+            if "repair_runner.py" not in command:
+                continue
+            if any(mode in command for mode in (
+                " authorize", " run", "verify-authorization", "test-candidate",
+                "collect-reviews", "publish-pr",
+            )):
+                effective = {**job.get("env", {}), **step.get("env", {})}
+                assert effective[flag] == value
+    for name, job in jobs.items():
+        if name not in ("authorization", "candidate", "verify", "publish-pr"):
+            assert flag not in json.dumps(job)
 
 
 def test_mechanical_independent_sessions_bind_current_patch_and_actual_test_receipt(tmp_path, monkeypatch):

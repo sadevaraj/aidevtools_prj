@@ -339,5 +339,16 @@ The token reportedly placed in a repository **variable** is not a valid secret:
 the owner must rotate it, remove that variable and recreate the proper secret
 privately before any live run. This task does not inspect or change it.
 
+The [28 October ~08:49 owner approval](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6463679181)
+adds an explicit default-off, durable-development-only unverified-access
+one-attempt alternative; it does not assert entitlement/quota or enforce billing.
+No-paid/no-overage controls and all other gates remain mandatory. No provider
+smoke or retry is approved: the real Grafana repair is the first model attempt,
+including required QA/Reviewer sessions, within 15 minutes from fault deployment;
+failure/timeout requires owner rollback. Changed tooling requires NEW reviewed
+healthy T / exact child fault F, pins, images and server authorization, not the
+old T/F pair. See the runbook for the exception and preserved compatible recovery
+images. Live execution is not authorized by this local patch; #12/#13 remain open.
+
 Course brief:
 https://github.com/DataTalksClub/ai-dev-tools-zoomcamp/tree/main/project

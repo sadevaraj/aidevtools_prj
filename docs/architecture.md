@@ -234,7 +234,8 @@ its original notification-only approval remains historical evidence:
 3. The outbox dispatches only to the fixed repository, workflow, and `main`
    ref. The workflow is manually dispatchable and disabled unless
    owner-controlled variables confirm the Free entitlement, current quota,
-   no-overage status, privacy approval, and feature enablement. The account's
+   no-overage status, privacy approval, and feature enablement (subject only to
+   the explicit #20 unverified-access exception below). The account's
    remaining quota is unknown; no paid eligibility probe is performed.
    Before candidate execution, the workflow obtains a GitHub OIDC identity
    token and the backend validates its signature, audience, repository, ref,
@@ -412,3 +413,32 @@ The reportedly misplaced token variable must be rotated/removed and recreated
 privately as the proper secret by the owner; do not inspect/copy it. All
 entitlement, free quota/no-overage, privacy, enablement and rollback/window gates
 default off. #12/#13 are open live prerequisites, not local implementation blockers.
+
+### #20 approved unverified-access one-attempt alternative
+
+[Agent-recorded owner approval, 28 October 2026 ~08:49 +01:00](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6463679181)
+permits `REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED=true` **only** with
+`DEMO_CONTROL_REQUIRED=true`, enabled durable development control and the fixed
+pipeline repair identity. The verified entitlement/quota path remains unchanged.
+The alternative accepts unknown access; it never sets or claims
+`REPAIR_FREE_ENTITLEMENT_CONFIRMED` / `REPAIR_QUOTA_CONFIRMED`. Trusted test
+receipts carry the accepted-risk marker through independent role evidence and
+publication checks. No schema change is needed.
+
+No-overage authorization/provider-side controls, privacy, tokens, OIDC,
+one-time T/F run/attempt binding, isolation, full tests, independent candidate
+QA/Reviewer sessions, budgets and default-off gates remain mandatory. Flags do
+not enforce billing or prove dollar safety; no paid usage enablement is approved.
+The first model attempt must be the real Grafana-triggered repair: no smoke or
+eligibility probe, retries or model loops. Candidate plus required QA/Reviewer
+sessions are one attempt. The owner window is 15 minutes from fault deployment;
+failure/timeout means stop, revoke and restore compatible healthy images.
+All other unknown prerequisites/defects still stop; #12/#13 remain OPEN live gates.
+
+Changed trusted code requires a NEW reviewed healthy T and exact one-line child F,
+recomputed trusted pin, repaired tree, image pair and server authorization.
+Never patch old F or reuse the old T pin for changed tooling. The old healthy
+published pair may remain recovery only if schema/control compatible, never as
+a database downgrade. Exact old digests, attributed owner evidence and sequencing
+are in the [runbook](runbooks/development-save-demo.md). This patch is local only;
+it authorizes none of those future publication/deployment operations.
