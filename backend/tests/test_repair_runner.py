@@ -57,6 +57,9 @@ def enabled_environment():
         "GITHUB_EVENT_NAME": "workflow_dispatch",
         "GITHUB_REPOSITORY": "sadevaraj/aidevtools_prj",
         "GITHUB_REF": "refs/heads/main",
+        "PIPELINE_MODE": "repair",
+        "GITHUB_WORKFLOW_REF": "sadevaraj/aidevtools_prj/.github/workflows/pipeline.yml@refs/heads/main",
+        "ALERT_REPAIR_DEADLINE": (datetime.now(timezone.utc) + timedelta(minutes=14)).isoformat(),
         "GITHUB_TOKEN": "offline-only-token",
         "ALERT_REPAIR_AUTHORIZED": "true",
         "GITHUB_RUN_ID": "1234",
@@ -95,8 +98,6 @@ def unverified_access_environment():
     return {
         **env,
         "REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED": "true",
-        "DEMO_CONTROL_REQUIRED": "true",
-        "DEMO_CONTROL_ENABLED": "true",
         "PIPELINE_MODE": "repair",
         "GITHUB_WORKFLOW_REF":
             "sadevaraj/aidevtools_prj/.github/workflows/pipeline.yml@refs/heads/main",
@@ -118,9 +119,6 @@ def test_explicit_controlled_access_risk_does_not_fabricate_confirmations(confir
     ("REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED", None),
     ("REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED", "false"),
     ("REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED", "TRUE"),
-    ("DEMO_CONTROL_REQUIRED", None),
-    ("DEMO_CONTROL_REQUIRED", "false"),
-    ("DEMO_CONTROL_ENABLED", "false"),
     ("PIPELINE_MODE", "fault"),
     ("GITHUB_WORKFLOW_REF", "attacker/repo/.github/workflows/pipeline.yml@refs/heads/main"),
     ("GITHUB_EVENT_NAME", "pull_request"),
@@ -378,7 +376,7 @@ def test_mocked_cli_boundary_uses_explicit_agent_and_never_runs_model(tmp_path):
         calls.append((command, kwargs))
         if command[-1] == "--version":
             return SimpleNamespace(stdout="GitHub Copilot CLI 1.0.103.\n")
-        if command[0] == "copilot":
+        if command[0] == "docker":
             return SimpleNamespace(stdout="")
         if command[0] == "git" and "status" in command:
             return SimpleNamespace(stdout="")
@@ -395,7 +393,7 @@ def test_mocked_cli_boundary_uses_explicit_agent_and_never_runs_model(tmp_path):
             process_runner=fake_run,
             executable_finder=lambda *_args, **_kwargs: "/offline/copilot",
         )
-        cli_call = next(call for call in calls if call[0][0] == "copilot")
+        cli_call = next(call for call in calls if "--agent" in call[0])
         assert cli_call[0][cli_call[0].index("--agent") + 1] == "Prj_Coordinator"
         assert cli_call[0][cli_call[0].index("--prompt") + 1]
         assert cli_call[1]["env"]["GITHUB_TOKEN"] == "offline-only-token"
@@ -458,6 +456,7 @@ def test_offline_oidc_authorization_claims_incident_and_checks_trusted_expiry():
         return FakeResponse({
             "authorized": True, "expires_at": EXPIRY,
             "run_id": "1234", "run_attempt": "1", "incident_id": INCIDENT,
+            "deadline": enabled_environment()["ALERT_REPAIR_DEADLINE"],
         })
 
     repair_runner.authorize_incident(
@@ -571,7 +570,7 @@ def test_workflow_binds_all_downstream_gates_to_trusted_outputs_and_attempt_arti
     jobs = workflow["jobs"]
     assert jobs["authorization"]["outputs"] == {
         key: "${{ steps.claim.outputs." + key + " }}"
-        for key in ("run_id", "run_attempt", "incident_id", "expires_at", *repair_runner.DEMO_CONTEXT_KEYS)
+        for key in ("run_id", "run_attempt", "incident_id", "expires_at", "deadline")
     }
     for job in ("candidate", "verify", "publish-pr"):
         for step in jobs[job]["steps"]:

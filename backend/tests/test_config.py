@@ -10,22 +10,12 @@ from sqlalchemy.engine import URL
 
 
 class SettingsTests(unittest.TestCase):
-    def test_demo_defaults_off_and_rejects_empty_or_weak_owner_credentials(self):
+    def test_repair_defaults_off_without_obsolete_demo_controls(self):
         with patch.dict(os.environ, self.valid_env(), clear=True):
             settings = load_settings()
-            self.assertFalse(settings.demo_control_enabled)
-            self.assertIsNone(settings.demo_control_token)
-        for secret in ("", "too-short"):
-            with patch.dict(os.environ, {**self.valid_env(), "DEMO_CONTROL_TOKEN": secret}, clear=True):
-                with self.assertRaises(RuntimeError):
-                    load_settings()
-        secret = "demo-fixture-only-credential-32-characters"
-        with patch.dict(os.environ, {
-            **self.valid_env(), "DEMO_CONTROL_TOKEN": secret, "DEMO_CONTROL_ENABLED": "true",
-        }, clear=True):
-            settings = load_settings()
-            self.assertTrue(settings.demo_control_enabled)
-            self.assertNotIn(secret, repr(settings))
+            self.assertFalse(settings.alert_repair_enabled)
+            self.assertNotIn("demo_control_enabled", type(settings).model_fields)
+            self.assertNotIn("demo_control_token", type(settings).model_fields)
 
     def valid_env(self):
         return {

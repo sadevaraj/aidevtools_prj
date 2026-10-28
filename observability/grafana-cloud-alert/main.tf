@@ -16,7 +16,7 @@ resource "grafana_contact_point" "save_failures" {
     http_method                = "POST"
     max_alerts                 = 1
     disable_resolve_message    = true
-    title                      = "Simple Sudoku save HTTP 5xx"
+    title                      = "SAVE-ERROR LOG"
     message                    = "At least one manual save returned HTTP 5xx in the rolling five-minute window."
   }
 }
@@ -28,7 +28,7 @@ resource "grafana_rule_group" "save_failures" {
 
   rule {
     uid           = "sudoku-save-http-5xx"
-    name          = "Sudoku save HTTP 5xx"
+    name          = "SAVE-ERROR LOG"
     condition       = "A"
     for             = "0s"
     no_data_state   = "OK"
@@ -44,7 +44,7 @@ resource "grafana_rule_group" "save_failures" {
     data {
       ref_id         = "A"
       query_type     = ""
-      datasource_uid = var.prometheus_datasource_uid
+      datasource_uid = var.loki_datasource_uid
 
       relative_time_range {
         from = 300
@@ -53,12 +53,12 @@ resource "grafana_rule_group" "save_failures" {
 
       model = jsonencode({
         datasource = {
-          type = "prometheus"
-          uid  = var.prometheus_datasource_uid
+          type = "loki"
+          uid  = var.loki_datasource_uid
         }
         editorMode    = "code"
         expr          = local.alert_contract.expression
-        instant       = true
+        queryType     = "instant"
         intervalMs    = 1000
         legendFormat  = "__auto"
         maxDataPoints = 43200

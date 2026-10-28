@@ -2,30 +2,28 @@
 
 ## Readiness and authority
 
-The [latest #20 approval, 28 October 2026 00:22 +01:00](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6456057621)
-supersedes branch-based and CI-only designs. Only this existing pipeline handles
-normal PR/main CI/CD, an explicit `workflow_dispatch mode=fault` development
-exception and authenticated Grafana `mode=repair` dispatch. A deliberate exact
-typo F follows healthy T **on MAIN**; normal F CI stays red and cannot publish.
-The fault mode separately validates the exact T/F delta and owner gates; it
-never makes a failed ordinary test job green. Repair is triggered by the genuine
-Grafana receiver/outbox, never by failed CI. The tested fix PR targets MAIN and
-requires manual owner merge, then ordinary successful tests → publish → deploy.
-No permanent demo branch/environment or other workflow is used. Follow the
-dedicated [owner runbook](development-save-demo.md) for all live prerequisites,
-immutable workflow/tooling identity, credential correction and stop/rollback.
-Local tests do not establish remote entitlement, delivery, or recovery.
+The [#20 replacement specification](../specs/issue-20-replacement.md) records
+user approval at **2026-10-28T09:39:20Z: “approved do it”**. The only existing
+pipeline handles ordinary PR/main CI/CD and authenticated Grafana `mode=repair`.
+There is no fault-mode publication/deployment exception. The healthy handler is
+restored as maintenance; failed ordinary tests still block publication.
 
-The [~08:49 owner supplement](https://github.com/sadevaraj/aidevtools_prj/issues/20#issuecomment-6463679181)
-permits explicit `REPAIR_UNVERIFIED_ACCESS_ONE_ATTEMPT_APPROVED=true` only in
-the durable development-control-required repair path, not ordinary/fault jobs.
-It accepts unknown access without asserting Free entitlement/quota. Mandatory
-no-paid/no-overage controls remain; flags do not enforce provider billing.
-No provider smoke or retry: the real Grafana repair is the first model attempt,
-including required QA/Reviewer sessions, with a 15-minute owner window from
-fault deployment and rollback on failure. Changed trusted tooling needs NEW
-reviewed healthy T, exact child F, pins/tree/images/server authorization.
-See the owner runbook; this local change authorizes no live operations.
+The genuine **SAVE-ERROR LOG** webhook, durable outbox and one-time OIDC
+run/attempt claim precede one isolated Copilot candidate attempt. Full tests and
+independent same-candidate QA/Reviewer evidence precede isolated PR publication.
+Automatic merge is approved **after ordinary PR checks**, with exact-head
+matching and no branch-protection/permission bypass or settings changes.
+Ordinary successful main tests → publish → existing opt-in deploy follow merge.
+Unavailable auto-merge settings/permissions stop safely.
+
+Entitlement remains unknown; explicit one-attempt access-risk consent does not
+assert Free/quota verification or enforce billing. No-paid/no-overage and
+transmission attestations remain mandatory. No extra provider smoke or retry.
+See the [operator runbook](development-save-demo.md) for shared runtime deadline,
+the stricter 15-minute timer from any separately confirmed future fault
+deployment, healthy restoration, and source/image provenance limitations.
+This cleanup authorizes no provider call, dispatch or live change. Coordinator
+healthy deployment authority applies only after renewed independent QA/review.
 
 Issue [#12](https://github.com/sadevaraj/aidevtools_prj/issues/12) implements this
 pipeline under the [agent-recorded human approval](https://github.com/sadevaraj/aidevtools_prj/issues/12#issuecomment-6428965305).

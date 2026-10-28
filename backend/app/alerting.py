@@ -20,14 +20,14 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.config import load_settings
 from app.database import SessionLocal
-from app.models import AlertIncident, DevelopmentDemoAuthorization
+from app.models import AlertIncident
 
 logger = logging.getLogger(__name__)
 MAX_BODY_BYTES = 16_384
 INCIDENT_TTL = timedelta(minutes=30)
 MAX_ATTEMPTS = 3
 MAX_ACCEPTS_PER_MINUTE = 10
-ALERT_NAME = "Sudoku save HTTP 5xx"
+ALERT_NAME = "SAVE-ERROR LOG"
 FINGERPRINT = re.compile(r"^[A-Fa-f0-9]{16,128}$", re.ASCII)
 INCIDENT_ID = re.compile(r"^[0-9a-f]{64}$", re.ASCII)
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
@@ -57,10 +57,6 @@ class InvalidWorkflowIdentity(ValueError):
 
 class IncidentAuthorizationError(ValueError):
     """Incident is not eligible for this run or has already been consumed."""
-
-
-class DemoAuthorizationUnavailable(ValueError):
-    """No current owner-armed save-recovery demo can receive this alert."""
 
 
 @dataclass(frozen=True)
@@ -265,9 +261,7 @@ def validate_payload(payload: object, *, development: bool) -> str:
     return hashlib.sha256(fingerprint.encode("ascii")).hexdigest()
 
 
-def accept_incident(
-    session, incident_id: str, *, require_demo_authorization: bool = False
-) -> bool:
+def accept_incident(session, incident_id: str) -> bool:
     """Atomically enforce the global intake limit and persist before ACK."""
     now = datetime.now(timezone.utc)
     session.execute(text("SELECT pg_advisory_xact_lock(781230041)"))
@@ -284,38 +278,19 @@ def accept_incident(
     )
     if recent >= MAX_ACCEPTS_PER_MINUTE:
         raise OverflowError
-    demo = None
-    if require_demo_authorization:
-        demo = session.scalar(
-            select(DevelopmentDemoAuthorization)
-            .where(
-                DevelopmentDemoAuthorization.state == "armed",
-                DevelopmentDemoAuthorization.alert_incident_id.is_(None),
-                DevelopmentDemoAuthorization.expires_at > now,
-            )
-            .order_by(DevelopmentDemoAuthorization.expires_at)
-            .with_for_update(skip_locked=True)
-            .limit(1)
-        )
-        if demo is None:
-            raise DemoAuthorizationUnavailable
     result = session.execute(
         insert(AlertIncident)
         .values(
             id=incident_id,
             status="pending",
             attempts=0,
-            expires_at=min(now + INCIDENT_TTL, demo.expires_at) if demo else now + INCIDENT_TTL,
+            expires_at=now + INCIDENT_TTL,
             next_attempt_at=now,
-            demo_authorization_id=demo.id if demo is not None else None,
         )
         .on_conflict_do_nothing(index_elements=["id"])
         .returning(AlertIncident.id)
     )
     created = result.scalar_one_or_none() is not None
-    if created and demo is not None:
-        demo.alert_incident_id = incident_id
-        demo.state = "claimed"
     session.commit()
     return created
 
@@ -327,7 +302,6 @@ def authorize_incident(
     *,
     expected_expires_at: str,
     claim: bool,
-    require_demo_authorization: bool = False,
 ) -> datetime:
     """Check trusted DB expiry and atomically bind one workflow attempt."""
     if not INCIDENT_ID.fullmatch(incident_id):
@@ -353,36 +327,17 @@ def authorize_incident(
         or incident.expires_at != expected_expiry
         or incident.attempts < 1
         or incident.status not in {"dispatching", "retry", "dispatched", "failed"}
+        or (
+            incident.execution_claimed_at is not None
+            and incident.execution_claimed_at + timedelta(minutes=15) <= now
+        )
     ):
         raise IncidentAuthorizationError
-    demo = None
-    if require_demo_authorization or incident.demo_authorization_id is not None:
-        if incident.demo_authorization_id is None:
-            raise IncidentAuthorizationError
-        demo = session.scalar(
-            select(DevelopmentDemoAuthorization)
-            .where(DevelopmentDemoAuthorization.id == incident.demo_authorization_id)
-            .with_for_update()
-        )
-        if (
-            demo is None
-            or demo.state != "claimed"
-            or demo.alert_incident_id != incident_id
-            or demo.expires_at <= now
-            or demo.branch != "main"
-            or demo.trusted_revision == demo.fault_revision
-            or run.workflow_sha != demo.fault_revision
-        ):
-            raise IncidentAuthorizationError
     if claim:
         if incident.execution_claimed_at is None:
             incident.execution_run_id = run.run_id
             incident.execution_run_attempt = run.run_attempt
             incident.execution_claimed_at = now
-            if demo is not None:
-                demo.claimed_run_id = run.run_id
-                demo.claimed_run_attempt = run.run_attempt
-                demo.claimed_at = now
             session.flush()
         elif (
             incident.execution_run_id != run.run_id
@@ -393,12 +348,6 @@ def authorize_incident(
         incident.execution_run_id != run.run_id
         or incident.execution_run_attempt != run.run_attempt
         or incident.execution_claimed_at is None
-    ):
-        raise IncidentAuthorizationError
-    if demo is not None and (
-        demo.claimed_run_id != run.run_id
-        or demo.claimed_run_attempt != run.run_attempt
-        or demo.claimed_at is None
     ):
         raise IncidentAuthorizationError
     return incident.expires_at
